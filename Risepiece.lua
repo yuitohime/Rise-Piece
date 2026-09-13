@@ -1,16 +1,17 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - VERSION 3.0
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - VERSION 3.1
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [CẬP NHẬT]: Nút X Đóng Menu, Farm All Boss, Chế độ Tween/Teleport, 
--- Ưu tiên đánh quái khi đợi Boss, Fix Auto Attack, Chuyển mục tiêu cực nhanh.
+-- [FIX BUGS]: Fix lỗi không hiện Menu (cú pháp + CoreGui bypass).
+-- [TÍNH NĂNG]: Nút X Đóng Menu, Farm All Boss, Chế độ Tween/Teleport, 
+-- Ưu tiên đánh quái khi đợi Boss, Chuyển mục tiêu cực nhanh.
 -- =====================================================================
 
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local VirtualUser = game:GetService("VirtualUser")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -56,15 +57,29 @@ local isTweening = false
 local currentTween = nil
 
 -- [ KHỞI TẠO GIAO DIỆN ]
-local UI_NAME = "RisePiece_PremiumUI_V3"
-if CoreGui:FindFirstChild(UI_NAME) then
-    CoreGui:FindFirstChild(UI_NAME):Destroy()
+local UI_NAME = "RisePiece_PremiumUI_V3_FIXED"
+
+-- Bypass CoreGui an toàn cho mọi Executor
+local targetParent
+if gethui then
+    targetParent = gethui()
+else
+    local success, cg = pcall(function() return game:GetService("CoreGui") end)
+    if success and cg then
+        targetParent = cg
+    else
+        targetParent = Players.LocalPlayer:WaitForChild("PlayerGui")
+    end
+end
+
+if targetParent:FindFirstChild(UI_NAME) then
+    targetParent:FindFirstChild(UI_NAME):Destroy()
 end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = UI_NAME
 ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = (pcall(function() return CoreGui.Name end) and CoreGui) or Players.LocalPlayer:WaitForChild("PlayerGui")
+ScreenGui.Parent = targetParent
 
 -- Nút Mở/Đóng (Hình Đa Giác - Diamond Shape)
 local ToggleButton = Instance.new("TextButton")
@@ -779,8 +794,8 @@ SafeConnect(RunService.Heartbeat, function()
         return
     end
 
-    -- LOGIC 5: Chỉ bật Auto Attack đứng tại chỗ
-    if not Config.AutoFarm residential and not Config.AutoBoss and not Config.FarmAllBosses and Config.AutoAttack then
+    -- LOGIC 5: Chỉ bật Auto Attack đứng tại chỗ (Đã sửa lỗi cú pháp 'residential')
+    if not Config.AutoFarm and not Config.AutoBoss and not Config.FarmAllBosses and Config.AutoAttack then
         EquipWeapon()
         Attack()
     end
@@ -793,4 +808,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 end)
 
-print("Rise Piece Superior Auto Farm V3 Loaded successfully! No code truncated.")
+print("Rise Piece Superior Auto Farm V3.1 Loaded successfully! (Fixed CoreGui + Syntax)")
