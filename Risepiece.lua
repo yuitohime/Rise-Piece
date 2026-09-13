@@ -1,9 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - VERSION 3.1
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V1]
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [FIX BUGS]: Fix lỗi không hiện Menu (cú pháp + CoreGui bypass).
--- [TÍNH NĂNG]: Nút X Đóng Menu, Farm All Boss, Chế độ Tween/Teleport, 
--- Ưu tiên đánh quái khi đợi Boss, Chuyển mục tiêu cực nhanh.
+-- [V1 UPDATE]: Đổi tên thành V1, Fix lỗi đơ game khi quét quái (chống crash), 
+-- Fix lỗi không hiện Menu trên một số Executor (Bypass UI an toàn).
+-- [TÍNH NĂNG]: Nút X Đóng Menu, Farm All Boss, Chế độ Tween/Teleport.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -13,6 +13,8 @@ local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
 
+-- Đợi LocalPlayer load xong để tránh đơ
+while not Players.LocalPlayer do task.wait() end
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
@@ -35,13 +37,13 @@ end
 local Config = {
     AutoFarm = false,
     AutoBoss = false,
-    FarmAllBosses = false, -- Chế độ đi lùng sục tất cả Boss
+    FarmAllBosses = false, 
     AutoAttack = false,
-    MovementMode = "Teleport", -- "Tween" hoặc "Teleport"
+    MovementMode = "Teleport", 
     FarmPosition = "Trên đầu",
     Distance = 5,
     TweenDuration = 0.5,
-    BossWaitTime = 0.5, -- Cập nhật min 0.1s
+    BossWaitTime = 0.5, 
     SelectedWeapon = nil,
     SelectedMobs = {}, 
     SelectedBosses = {},
@@ -56,20 +58,26 @@ local Config = {
 local isTweening = false
 local currentTween = nil
 
--- [ KHỞI TẠO GIAO DIỆN ]
-local UI_NAME = "RisePiece_PremiumUI_V3_FIXED"
+-- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN (CHỐNG LỖI KHÔNG HIỆN MENU) ]
+local UI_NAME = "RisePiece_PremiumUI_V1"
 
--- Bypass CoreGui an toàn cho mọi Executor
-local targetParent
-if gethui then
-    targetParent = gethui()
-else
-    local success, cg = pcall(function() return game:GetService("CoreGui") end)
-    if success and cg then
-        targetParent = cg
-    else
-        targetParent = Players.LocalPlayer:WaitForChild("PlayerGui")
+local targetParent = nil
+pcall(function()
+    if get_hidden_gui or gethui then
+        local hiddenUI = get_hidden_gui or gethui
+        targetParent = hiddenUI()
+    elseif game:GetService("CoreGui") then
+        targetParent = game:GetService("CoreGui")
     end
+end)
+
+if not targetParent then
+    targetParent = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
+end
+
+if not targetParent then 
+    warn("[V1] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
+    return
 end
 
 if targetParent:FindFirstChild(UI_NAME) then
@@ -168,14 +176,14 @@ local PanelPadding = Instance.new("UIPadding")
 PanelPadding.Parent = LeftPanel
 PanelPadding.PaddingTop = UDim.new(0, 10)
 
--- Tiêu đề Menu
+-- Tiêu đề Menu (Hiển thị V1)
 local MenuTitle = Instance.new("TextLabel")
 MenuTitle.Size = UDim2.new(1, 0, 0, 30)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH"
+MenuTitle.Text = "TIỆN ÍCH [V1]"
 MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
 MenuTitle.Font = Enum.Font.GothamBold
-MenuTitle.TextSize = 16
+MenuTitle.TextSize = 15
 MenuTitle.Parent = LeftPanel
 
 -- Các Tab Chức Năng
@@ -465,29 +473,44 @@ local function UpdateBossUIList()
     BossListContainer.CanvasSize = UDim2.new(0, 0, 0, BossListLayout.AbsoluteContentSize.Y)
 end
 
+-- TỐI ƯU HÓA: Quét quái không làm đơ game
 CreateButton(MainTab, "Quét Quái & Boss Bản Đồ", function()
-    local mapa = Workspace:FindFirstChild("Mapa")
-    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies")
+    local btn = MainTab:FindFirstChildOfClass("TextButton") -- Nút hiện tại
+    if btn then btn.Text = "Đang quét..." end
     
-    local function ScanObj(obj)
-        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
-            if IsBoss(obj) then
-                Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
-            else
-                Config.MobListCache[obj.Name] = true
+    task.spawn(function()
+        local mapa = Workspace:FindFirstChild("Mapa")
+        local enemiesFolder = mapa and mapa:FindFirstChild("Enemies")
+        
+        local function ScanObj(obj)
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
+                if IsBoss(obj) then
+                    Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
+                else
+                    Config.MobListCache[obj.Name] = true
+                end
             end
         end
-    end
 
-    if enemiesFolder then
-        for _, obj in pairs(enemiesFolder:GetDescendants()) do ScanObj(obj) end
-    else
-        for _, obj in pairs(Workspace:GetDescendants()) do ScanObj(obj) end
-    end
-    
-    for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
-    UpdateMobUIList()
-    UpdateBossUIList()
+        if enemiesFolder then
+            for _, obj in pairs(enemiesFolder:GetDescendants()) do 
+                ScanObj(obj) 
+            end
+        else
+            -- Quét toàn map, nhả task.wait() liên tục để không crash máy
+            local allDescendants = Workspace:GetDescendants()
+            for i, obj in pairs(allDescendants) do 
+                ScanObj(obj) 
+                if i % 1000 == 0 then task.wait() end 
+            end
+        end
+        
+        for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
+        UpdateMobUIList()
+        UpdateBossUIList()
+        
+        if btn then btn.Text = "Quét Quái & Boss Bản Đồ" end
+    end)
 end)
 
 MobListContainer.Parent = MainTab
@@ -723,7 +746,7 @@ local function Attack()
     if not char then return end
     local tool = char:FindFirstChildOfClass("Tool")
     if tool then
-        -- Dùng Activate gốc của game, không click chuột ảo tránh loạn UI
+        -- Dùng Activate gốc của game
         tool:Activate() 
     end
 end
@@ -794,7 +817,7 @@ SafeConnect(RunService.Heartbeat, function()
         return
     end
 
-    -- LOGIC 5: Chỉ bật Auto Attack đứng tại chỗ (Đã sửa lỗi cú pháp 'residential')
+    -- LOGIC 5: Chỉ bật Auto Attack đứng tại chỗ
     if not Config.AutoFarm and not Config.AutoBoss and not Config.FarmAllBosses and Config.AutoAttack then
         EquipWeapon()
         Attack()
@@ -808,4 +831,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 end)
 
-print("Rise Piece Superior Auto Farm V3.1 Loaded successfully! (Fixed CoreGui + Syntax)")
+print("Rise Piece Superior Auto Farm V1 Loaded successfully! (Crash/Freeze Fixed)")
