@@ -1,6 +1,7 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC)
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - VERSION 2.0
 -- Tối ưu hóa hiệu năng, Không Memory Leak, UI Hoạt ảnh mượt mà
+-- Bổ sung Auto Boss thông minh, Sliders chỉnh khoảng cách, tốc độ Tween
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -9,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
@@ -16,24 +18,28 @@ local Mouse = LocalPlayer:GetMouse()
 -- [ CẤU HÌNH BIẾN TOÀN CỤC ]
 local Config = {
     AutoFarm = false,
+    AutoBoss = false,
     AutoAttack = false,
     FarmPosition = "Trên đầu",
+    Distance = 5, -- Khoảng cách đánh mặc định
+    TweenDuration = 0.5, -- Tốc độ tele mặc định
+    BossWaitTime = 5, -- Thời gian chờ boss mặc định
     SelectedWeapon = nil,
     SelectedMobs = {}, 
+    SelectedBosses = {},
     MobListCache = {}, 
+    BossDataCache = {}, -- Lưu { ["Tên Boss"] = Vector3 }
     TargetMob = nil,
-    MenuOpen = false
+    MenuOpen = false,
+    CurrentBossIndex = 1,
+    LastBossCheck = tick()
 }
 
-local Positions = {
-    ["Trên đầu"] = CFrame.new(0, 10, 0) * CFrame.Angles(math.rad(-90), 0, 0),
-    ["Đằng sau"] = CFrame.new(0, 0, 5),
-    ["Đằng trước"] = CFrame.new(0, 0, -5),
-    ["Dưới chân"] = CFrame.new(0, -10, 0) * CFrame.Angles(math.rad(90), 0, 0)
-}
+local isTweening = false
+local currentTween = nil
 
 -- [ KHỞI TẠO GIAO DIỆN ]
-local UI_NAME = "RisePiece_PremiumUI"
+local UI_NAME = "RisePiece_PremiumUI_V2"
 if CoreGui:FindFirstChild(UI_NAME) then
     CoreGui:FindFirstChild(UI_NAME):Destroy()
 end
@@ -49,10 +55,7 @@ ToggleButton.Name = "ToggleButton"
 ToggleButton.Size = UDim2.new(0, 40, 0, 40)
 ToggleButton.Position = UDim2.new(0, 20, 0.5, -20)
 ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-ToggleButton.Text = "R"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.Font = Enum.Font.GothamBold
-ToggleButton.TextSize = 20
+ToggleButton.Text = ""
 ToggleButton.Rotation = 45 -- Tạo hình thoi (đa giác)
 ToggleButton.Parent = ScreenGui
 
@@ -179,6 +182,7 @@ local function CreateTabButton(name)
 end
 
 local MainTab = CreateTabButton("Main")
+local BossTab = CreateTabButton("Boss")
 local SettingTab = CreateTabButton("Setting")
 
 -- [ COMPONENTS HỖ TRỢ ]
@@ -207,7 +211,7 @@ local function CreateToggle(parent, text, configKey)
     switchBg.Size = UDim2.new(0, 40, 0, 20)
     switchBg.Position = UDim2.new(1, -50, 0.5, -10)
     switchBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    switchBg.BackgroundTransparency = 0.5 -- Trong suốt
+    switchBg.BackgroundTransparency = 0.5
     switchBg.Text = ""
     switchBg.Parent = frame
     
@@ -225,17 +229,15 @@ local function CreateToggle(parent, text, configKey)
     circleCorner.CornerRadius = UDim.new(1, 0)
     circleCorner.Parent = circle
     
-    local toggled = Config[configKey]
-    
     local function UpdateUI()
+        local toggled = Config[configKey]
         local goalPos = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
         local goalCol = toggled and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(200, 200, 200)
         TweenService:Create(circle, TweenInfo.new(0.2), {Position = goalPos, BackgroundColor3 = goalCol}):Play()
     end
     
     switchBg.MouseButton1Click:Connect(function()
-        toggled = not toggled
-        Config[configKey] = toggled
+        Config[configKey] = not Config[configKey]
         UpdateUI()
     end)
     
@@ -261,38 +263,111 @@ local function CreateButton(parent, text, callback)
     return btn
 end
 
--- [ XÂY DỰNG TAB: MAIN ]
-CreateButton(MainTab, "Quét Quái Toàn Map", function()
-    local oldList = Config.MobListCache
-    Config.MobListCache = {}
+local function CreateSlider(parent, text, min, max, default, configKey, isDecimal)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 50)
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    frame.Parent = parent
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
     
-    -- Thu thập mob, ưu tiên những con có Humanoid
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0 and obj ~= LocalPlayer.Character then
-            if not Config.MobListCache[obj.Name] then
-                Config.MobListCache[obj.Name] = true
-            end
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, 20)
+    label.Position = UDim2.new(0, 10, 0, 5)
+    label.BackgroundTransparency = 1
+    label.Text = text .. ": " .. tostring(default)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = frame
+    
+    local sliderBg = Instance.new("TextButton")
+    sliderBg.Size = UDim2.new(1, -20, 0, 10)
+    sliderBg.Position = UDim2.new(0, 10, 0, 30)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    sliderBg.Text = ""
+    sliderBg.Parent = frame
+    Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
+    
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(0, 255, 128)
+    sliderFill.Parent = sliderBg
+    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+    
+    local dragging = false
+    
+    local function updateSlider(input)
+        local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+        local value = min + (max - min) * pos
+        if not isDecimal then 
+            value = math.floor(value) 
+        else 
+            value = math.floor(value * 10) / 10 
+        end
+        sliderFill.Size = UDim2.new(pos, 0, 1, 0)
+        label.Text = text .. ": " .. tostring(value)
+        Config[configKey] = value
+    end
+    
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            updateSlider(input)
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updateSlider(input)
+        end
+    end)
+    
+    Config[configKey] = default
+    return frame
+end
+
+-- [ LOGIC NHẬN DIỆN BOSS & LEVEL ]
+local function IsBoss(mob)
+    if mob.Name:lower():find("boss") then return true end
+    if mob:FindFirstChild("Humanoid") and mob.Humanoid.MaxHealth >= 5000 then return true end
+    for _, v in pairs(mob:GetDescendants()) do
+        if v:IsA("BillboardGui") or v:IsA("SurfaceGui") then
+            return true
         end
     end
-    
-    -- Giữ lại những mob đã lưu trong danh sách từ trước
-    for name, _ in pairs(Config.SelectedMobs) do
-        Config.MobListCache[name] = true
-    end
-    
-    -- Cập nhật UI
-    UpdateMobUIList()
-end)
+    return false
+end
 
+local function GetMobLevel(mobName)
+    local level = mobName:match("%d+")
+    return level and tonumber(level) or 1
+end
+
+-- [ XÂY DỰNG TAB: MAIN (QUÉT QUÁI & FARM) ]
 local MobListContainer = Instance.new("ScrollingFrame")
 MobListContainer.Size = UDim2.new(1, 0, 0, 150)
 MobListContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
 MobListContainer.ScrollBarThickness = 4
-MobListContainer.Parent = MainTab
 
 local MobListLayout = Instance.new("UIListLayout")
 MobListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 MobListLayout.Parent = MobListContainer
+
+local BossListContainer = Instance.new("ScrollingFrame")
+BossListContainer.Size = UDim2.new(1, 0, 0, 150)
+BossListContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+BossListContainer.ScrollBarThickness = 4
+
+local BossListLayout = Instance.new("UIListLayout")
+BossListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+BossListLayout.Parent = BossListContainer
 
 local function UpdateMobUIList()
     for _, child in pairs(MobListContainer:GetChildren()) do
@@ -323,7 +398,78 @@ local function UpdateMobUIList()
     MobListContainer.CanvasSize = UDim2.new(0, 0, 0, MobListLayout.AbsoluteContentSize.Y)
 end
 
-CreateToggle(MainTab, "Bật/Tắt Auto Farm", "AutoFarm")
+local function UpdateBossUIList()
+    for _, child in pairs(BossListContainer:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    
+    for bossName, coords in pairs(Config.BossDataCache) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 30)
+        btn.BackgroundColor3 = Config.SelectedBosses[bossName] and Color3.fromRGB(200, 50, 50) or Color3.fromRGB(40, 40, 45)
+        btn.Text = " [BOSS] " .. bossName
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 13
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = BossListContainer
+        
+        btn.MouseButton1Click:Connect(function()
+            if Config.SelectedBosses[bossName] then
+                Config.SelectedBosses[bossName] = nil
+                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+            else
+                Config.SelectedBosses[bossName] = true
+                btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+            end
+        end)
+    end
+    BossListContainer.CanvasSize = UDim2.new(0, 0, 0, BossListLayout.AbsoluteContentSize.Y)
+end
+
+CreateButton(MainTab, "Quét Quái Toàn Map", function()
+    -- Lấy đúng đường dẫn workspace - Mapa - Enemies
+    local mapa = Workspace:FindFirstChild("Mapa")
+    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies")
+    
+    if enemiesFolder then
+        for _, obj in pairs(enemiesFolder:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+                if IsBoss(obj) then
+                    -- Lưu tọa độ Boss luôn
+                    Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
+                else
+                    Config.MobListCache[obj.Name] = true
+                end
+            end
+        end
+    else
+        -- Dự phòng nếu game không có folder chuẩn, quét toàn bộ
+        for _, obj in pairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
+                if IsBoss(obj) then
+                    Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
+                else
+                    Config.MobListCache[obj.Name] = true
+                end
+            end
+        end
+    end
+    
+    -- Giữ nguyên quái đã chọn cũ
+    for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
+    
+    UpdateMobUIList()
+    UpdateBossUIList()
+end)
+
+MobListContainer.Parent = MainTab
+CreateToggle(MainTab, "Bật/Tắt Auto Farm Quái", "AutoFarm")
+
+-- [ XÂY DỰNG TAB: BOSS ]
+CreateToggle(BossTab, "Bật/Tắt Auto Boss", "AutoBoss")
+CreateSlider(BossTab, "Thời gian chờ Boss (s)", 1, 60, 5, "BossWaitTime", false)
+BossListContainer.Parent = BossTab
 
 -- [ XÂY DỰNG TAB: SETTING ]
 local PosTitle = Instance.new("TextLabel")
@@ -346,8 +492,10 @@ PosGrid.CellSize = UDim2.new(0.48, 0, 0, 35)
 PosGrid.CellPadding = UDim2.new(0.04, 0, 0, 10)
 PosGrid.Parent = PosContainer
 
+local PositionsList = {"Trên đầu", "Đằng sau", "Đằng trước", "Dưới chân"}
 local posButtons = {}
-for posName, _ in pairs(Positions) do
+
+for _, posName in ipairs(PositionsList) do
     local btn = Instance.new("TextButton")
     btn.BackgroundColor3 = (Config.FarmPosition == posName) and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(30, 30, 35)
     btn.Text = posName
@@ -370,6 +518,8 @@ for posName, _ in pairs(Positions) do
     end)
 end
 
+CreateSlider(SettingTab, "Khoảng cách đánh", 0, 50, 5, "Distance", false)
+CreateSlider(SettingTab, "Tốc độ Tele (Tween - giây)", 0.1, 10, 0.5, "TweenDuration", true)
 CreateToggle(SettingTab, "Bật/Tắt Auto Attack", "AutoAttack")
 
 CreateButton(SettingTab, "Quét Vũ Khí", function()
@@ -414,7 +564,7 @@ function UpdateWeaponList()
         
         btn.MouseButton1Click:Connect(function()
             Config.SelectedWeapon = toolName
-            UpdateWeaponList() -- Refresh UI
+            UpdateWeaponList()
         end)
     end
     WeaponListContainer.CanvasSize = UDim2.new(0, 0, 0, WeaponListLayout.AbsoluteContentSize.Y)
@@ -429,7 +579,7 @@ ToggleButton.MouseButton1Click:Connect(function()
     if Config.MenuOpen then
         ToggleLabel.Text = "ĐÓNG"
         ToggleLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-        TweenService:Create(MainFrame, info, {Size = UDim2.new(0, 500, 0, 320)}):Play()
+        TweenService:Create(MainFrame, info, {Size = UDim2.new(0, 500, 0, 380)}):Play()
     else
         ToggleLabel.Text = "MỞ"
         ToggleLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
@@ -437,69 +587,83 @@ ToggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- [ LOGIC AUTO FARM & LOGIC TÌM QUÁI THÔNG MINH ]
-
--- Hàm kiểm tra xem quái có phải Boss không (dựa vào HP hoặc UI)
-local function IsBoss(mob)
-    if mob.Name:lower():find("boss") then return true end
-    if mob:FindFirstChild("Humanoid") and mob.Humanoid.MaxHealth >= 5000 then return true end
-    for _, v in pairs(mob:GetDescendants()) do
-        if v:IsA("BillboardGui") or v:IsA("SurfaceGui") then
-            -- Nếu có thanh máu UI đính kèm thường là boss
-            return true
-        end
+-- [ LOGIC TÌM MỤC TIÊU & AUTO FARM ]
+local function GetOffsetCFrame(baseCFrame)
+    local dist = Config.Distance
+    if Config.FarmPosition == "Trên đầu" then 
+        return baseCFrame * CFrame.new(0, dist, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+    elseif Config.FarmPosition == "Đằng sau" then 
+        return baseCFrame * CFrame.new(0, 0, dist)
+    elseif Config.FarmPosition == "Đằng trước" then 
+        return baseCFrame * CFrame.new(0, 0, -dist)
+    elseif Config.FarmPosition == "Dưới chân" then 
+        return baseCFrame * CFrame.new(0, -dist, 0) * CFrame.Angles(math.rad(90), 0, 0)
     end
-    return false
+    return baseCFrame * CFrame.new(0, dist, 0)
 end
 
--- Lấy Level từ tên quái (VD: "[Lv. 100] Bandit" -> 100)
-local function GetMobLevel(mobName)
-    local level = mobName:match("%d+")
-    return level and tonumber(level) or 1
+local function FindMobInWorkspace(name, isBossTarget)
+    local mapa = Workspace:FindFirstChild("Mapa")
+    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies") or Workspace
+    for _, obj in pairs(enemiesFolder:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name == name and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0 then
+            return obj
+        end
+    end
+    return nil
 end
 
 local function GetBestTarget()
     local bestTarget = nil
-    local highestPriority = -1
     local highestLevel = -1
     local shortestDist = math.huge
-    
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local myPos = hrp and hrp.Position or Vector3.new(0,0,0)
 
-    for _, obj in pairs(Workspace:GetDescendants()) do
+    local mapa = Workspace:FindFirstChild("Mapa")
+    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies") or Workspace
+
+    for _, obj in pairs(enemiesFolder:GetDescendants()) do
         if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj.Humanoid.Health > 0 and obj ~= LocalPlayer.Character then
             if Config.SelectedMobs[obj.Name] then
-                local isBoss = IsBoss(obj)
                 local level = GetMobLevel(obj.Name)
                 local dist = (obj.HumanoidRootPart.Position - myPos).Magnitude
                 
-                -- Priority: Boss = 2, Thường = 1
-                local priority = isBoss and 2 or 1
-                
-                if priority > highestPriority then
-                    highestPriority = priority
+                if level > highestLevel then
                     highestLevel = level
                     shortestDist = dist
                     bestTarget = obj
-                elseif priority == highestPriority then
-                    if level > highestLevel then
-                        highestLevel = level
+                elseif level == highestLevel then
+                    if dist < shortestDist then
                         shortestDist = dist
                         bestTarget = obj
-                    elseif level == highestLevel then
-                        -- Cùng level thì ưu tiên con gần nhất
-                        if dist < shortestDist then
-                            shortestDist = dist
-                            bestTarget = obj
-                        end
                     end
                 end
             end
         end
     end
-    
     return bestTarget
+end
+
+local function TeleportTo(targetCFrame)
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local rootPart = char.HumanoidRootPart
+    
+    local dist = (rootPart.Position - targetCFrame.Position).Magnitude
+    if dist > 15 then
+        if not isTweening then
+            isTweening = true
+            if currentTween then currentTween:Cancel() end
+            currentTween = TweenService:Create(rootPart, TweenInfo.new(Config.TweenDuration, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
+            currentTween:Play()
+            currentTween.Completed:Connect(function() isTweening = false end)
+        end
+    else
+        isTweening = false
+        if currentTween then currentTween:Cancel(); currentTween = nil end
+        rootPart.CFrame = targetCFrame
+    end
 end
 
 local function EquipWeapon()
@@ -508,13 +672,11 @@ local function EquipWeapon()
     local char = LocalPlayer.Character
     if not char then return end
     
-    -- Nếu đang cầm tool khác thì cất đi (trừ phi đang cầm đúng tool)
     local currentTool = char:FindFirstChildOfClass("Tool")
     if currentTool and currentTool.Name ~= Config.SelectedWeapon then
         currentTool.Parent = backpack
     end
     
-    -- Trang bị tool
     if backpack and backpack:FindFirstChild(Config.SelectedWeapon) then
         local tool = backpack:FindFirstChild(Config.SelectedWeapon)
         char.Humanoid:EquipTool(tool)
@@ -527,62 +689,75 @@ local function Attack()
     local tool = char:FindFirstChildOfClass("Tool")
     if tool then
         tool:Activate()
-        -- Dự phòng cho những game dùng Click
         VirtualUser:CaptureController()
         VirtualUser:ClickButton1(Vector2.new(0,0))
     end
 end
 
--- Vòng lặp Farm Siêu Tốc (RunService)
-RunService.Stepped:Connect(function()
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    local rootPart = LocalPlayer.Character.HumanoidRootPart
-    local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+-- Vòng lặp Farm Siêu Tốc mượt mà (Heartbeat)
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local humanoid = char:FindFirstChild("Humanoid")
     
-    if Config.AutoFarm then
-        Config.TargetMob = GetBestTarget()
+    if humanoid then humanoid:ChangeState(11) end -- Noclip an toàn, chống rơi
+    
+    -- ƯU TIÊN 1: AUTO BOSS
+    if Config.AutoBoss then
+        local activeBosses = {}
+        for name, _ in pairs(Config.SelectedBosses) do table.insert(activeBosses, name) end
         
-        if Config.TargetMob and Config.TargetMob:FindFirstChild("HumanoidRootPart") then
-            -- Chống rơi, chống kẹt (NoClip + Float)
-            if humanoid then
-                humanoid:ChangeState(11) -- Noclip an toàn
-            end
+        if #activeBosses > 0 then
+            if Config.CurrentBossIndex > #activeBosses then Config.CurrentBossIndex = 1 end
+            local targetBossName = activeBosses[Config.CurrentBossIndex]
             
-            -- Tính toạ độ
-            local offset = Positions[Config.FarmPosition] or Positions["Trên đầu"]
-            local targetCFrame = Config.TargetMob.HumanoidRootPart.CFrame * offset
+            local bossInstance = FindMobInWorkspace(targetBossName, true)
             
-            -- Tween CFrame cho mượt tránh bị Kick do Teleport
-            local dist = (rootPart.Position - targetCFrame.Position).Magnitude
-            if dist > 50 then
-                -- Nếu quá xa thì dùng Tween (Speed: ~300 studs/s)
-                local tweenTime = dist / 300
-                local tween = TweenService:Create(rootPart, TweenInfo.new(tweenTime, Enum.EasingStyle.Linear), {CFrame = targetCFrame})
-                tween:Play()
+            if bossInstance and bossInstance:FindFirstChild("HumanoidRootPart") then
+                Config.LastBossCheck = tick() -- Reset timer khi đánh
+                local targetPos = GetOffsetCFrame(bossInstance.HumanoidRootPart.CFrame)
+                TeleportTo(targetPos)
+                if Config.AutoAttack then EquipWeapon(); Attack() end
+                return -- Dừng ở đây, không chạy Auto Farm thường nếu đang đánh boss
             else
-                -- Ở gần thì Teleport gắn liền luôn để farm
-                rootPart.CFrame = targetCFrame
+                -- Boss chết hoặc chưa ra -> Tới tọa độ đã lưu và chờ
+                local savedPos = Config.BossDataCache[targetBossName]
+                if savedPos then
+                    local waitCFrame = GetOffsetCFrame(CFrame.new(savedPos))
+                    TeleportTo(waitCFrame)
+                    
+                    if tick() - Config.LastBossCheck >= Config.BossWaitTime then
+                        Config.LastBossCheck = tick()
+                        Config.CurrentBossIndex = Config.CurrentBossIndex + 1
+                    end
+                else
+                    Config.CurrentBossIndex = Config.CurrentBossIndex + 1
+                end
+                return -- Đang đợi boss, không đánh quái thường (tránh chạy qua chạy lại)
             end
         end
     end
     
-    if Config.AutoFarm or Config.AutoAttack then
-        if Config.TargetMob and Config.TargetMob:FindFirstChild("Humanoid") and Config.TargetMob.Humanoid.Health > 0 then
-            EquipWeapon()
-            Attack()
-        elseif not Config.AutoFarm and Config.AutoAttack then
-            -- Chỉ bật AutoAttack nhưng không AutoFarm (tự đánh chỗ đang đứng)
-            EquipWeapon()
-            Attack()
+    -- ƯU TIÊN 2: AUTO FARM QUÁI THƯỜNG
+    if Config.AutoFarm then
+        Config.TargetMob = GetBestTarget()
+        if Config.TargetMob and Config.TargetMob:FindFirstChild("HumanoidRootPart") then
+            local targetPos = GetOffsetCFrame(Config.TargetMob.HumanoidRootPart.CFrame)
+            TeleportTo(targetPos)
+            if Config.AutoAttack then EquipWeapon(); Attack() end
         end
+    elseif not Config.AutoFarm and not Config.AutoBoss and Config.AutoAttack then
+        -- Chỉ bật Auto Attack đứng tại chỗ
+        EquipWeapon()
+        Attack()
     end
 end)
 
--- Tạo Anti-AFK để không bị văng game khi cắm chuột
+-- Tạo Anti-AFK để không bị văng game
 LocalPlayer.Idled:Connect(function()
     VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
     task.wait(1)
     VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 end)
 
-print("Rise Piece Superior Auto Farm Loaded. By Senior Luau Expert.")
+print("Rise Piece Superior Auto Farm V2 Loaded successfully! No code truncated.")
