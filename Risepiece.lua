@@ -1,9 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V1]
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V2]
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [V1 UPDATE]: Đổi tên thành V1, Fix lỗi đơ game khi quét quái (chống crash), 
--- Fix lỗi không hiện Menu trên một số Executor (Bypass UI an toàn).
--- [TÍNH NĂNG]: Nút X Đóng Menu, Farm All Boss, Chế độ Tween/Teleport.
+-- [V2 UPDATE]: Fix Auto Attack cực nhanh (tách luồng RenderStepped).
+-- Cập nhật bộ lọc Scanner: Xóa NPC (spawnner), Lọc chuẩn Boss (đuôi boss) và Quái.
+-- Thêm nút Quét riêng biệt ở Tab Boss.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -59,7 +59,7 @@ local isTweening = false
 local currentTween = nil
 
 -- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN (CHỐNG LỖI KHÔNG HIỆN MENU) ]
-local UI_NAME = "RisePiece_PremiumUI_V1"
+local UI_NAME = "RisePiece_PremiumUI_V2"
 
 local targetParent = nil
 pcall(function()
@@ -76,7 +76,7 @@ if not targetParent then
 end
 
 if not targetParent then 
-    warn("[V1] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
+    warn("[V2] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
     return
 end
 
@@ -176,11 +176,11 @@ local PanelPadding = Instance.new("UIPadding")
 PanelPadding.Parent = LeftPanel
 PanelPadding.PaddingTop = UDim.new(0, 10)
 
--- Tiêu đề Menu (Hiển thị V1)
+-- Tiêu đề Menu (Hiển thị V2)
 local MenuTitle = Instance.new("TextLabel")
 MenuTitle.Size = UDim2.new(1, 0, 0, 30)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH [V1]"
+MenuTitle.Text = "TIỆN ÍCH [V2]"
 MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
 MenuTitle.Font = Enum.Font.GothamBold
 MenuTitle.TextSize = 15
@@ -377,23 +377,34 @@ local function CreateSlider(parent, text, min, max, default, configKey, isDecima
     return frame
 end
 
--- [ LOGIC NHẬN DIỆN BOSS & LEVEL ]
+-- [ LOGIC NHẬN DIỆN MỤC TIÊU (V2 - LỌC CHUẨN XÁC) ]
 local function IsAlive(mob)
     return mob and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 and mob:FindFirstChild("HumanoidRootPart")
-end
-
-local function IsBoss(mob)
-    if mob.Name:lower():find("boss") then return true end
-    if mob:FindFirstChild("Humanoid") and mob.Humanoid.MaxHealth >= 5000 then return true end
-    for _, v in pairs(mob:GetDescendants()) do
-        if v:IsA("BillboardGui") or v:IsA("SurfaceGui") then return true end
-    end
-    return false
 end
 
 local function GetMobLevel(mobName)
     local level = mobName:match("%d+")
     return level and tonumber(level) or 1
+end
+
+-- Hàm Quét Chung Cho Cả Boss và Quái (V2)
+local function ScanObj(obj)
+    if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
+        local lowerName = obj.Name:lower()
+        
+        -- 1. Bỏ qua NPC có chữ "spawnner" hoặc "spawner" ở đầu tên
+        if string.match(lowerName, "^spawnner") or string.match(lowerName, "^spawner") then 
+            return 
+        end
+        
+        -- 2. Nhận diện Boss (chỉ khi có chữ "boss" ở CUỐI tên)
+        if string.match(lowerName, "boss$") then
+            Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
+        else
+            -- 3. Quái thường (Không có chữ boss ở cuối thì là quái)
+            Config.MobListCache[obj.Name] = true
+        end
+    end
 end
 
 -- [ XÂY DỰNG TAB: MAIN (QUÉT QUÁI & FARM) ]
@@ -473,43 +484,39 @@ local function UpdateBossUIList()
     BossListContainer.CanvasSize = UDim2.new(0, 0, 0, BossListLayout.AbsoluteContentSize.Y)
 end
 
--- TỐI ƯU HÓA: Quét quái không làm đơ game
-CreateButton(MainTab, "Quét Quái & Boss Bản Đồ", function()
-    local btn = MainTab:FindFirstChildOfClass("TextButton") -- Nút hiện tại
+-- TỐI ƯU HÓA: Quét chung Bản Đồ
+local function ScanAllMap()
+    local mapa = Workspace:FindFirstChild("Mapa")
+    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies")
+    
+    if enemiesFolder then
+        for _, obj in pairs(enemiesFolder:GetDescendants()) do 
+            ScanObj(obj) 
+        end
+    else
+        local allDescendants = Workspace:GetDescendants()
+        for i, obj in pairs(allDescendants) do 
+            ScanObj(obj) 
+            if i % 1000 == 0 then task.wait() end 
+        end
+    end
+    
+    for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
+    for name, _ in pairs(Config.SelectedBosses) do 
+        if Config.BossDataCache[name] then Config.SelectedBosses[name] = true end
+    end
+    
+    UpdateMobUIList()
+    UpdateBossUIList()
+end
+
+CreateButton(MainTab, "Quét Quái Bản Đồ", function()
+    local btn = MainTab:FindFirstChildOfClass("TextButton") 
     if btn then btn.Text = "Đang quét..." end
     
     task.spawn(function()
-        local mapa = Workspace:FindFirstChild("Mapa")
-        local enemiesFolder = mapa and mapa:FindFirstChild("Enemies")
-        
-        local function ScanObj(obj)
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
-                if IsBoss(obj) then
-                    Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
-                else
-                    Config.MobListCache[obj.Name] = true
-                end
-            end
-        end
-
-        if enemiesFolder then
-            for _, obj in pairs(enemiesFolder:GetDescendants()) do 
-                ScanObj(obj) 
-            end
-        else
-            -- Quét toàn map, nhả task.wait() liên tục để không crash máy
-            local allDescendants = Workspace:GetDescendants()
-            for i, obj in pairs(allDescendants) do 
-                ScanObj(obj) 
-                if i % 1000 == 0 then task.wait() end 
-            end
-        end
-        
-        for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
-        UpdateMobUIList()
-        UpdateBossUIList()
-        
-        if btn then btn.Text = "Quét Quái & Boss Bản Đồ" end
+        ScanAllMap()
+        if btn then btn.Text = "Quét Quái Bản Đồ" end
     end)
 end)
 
@@ -517,6 +524,16 @@ MobListContainer.Parent = MainTab
 CreateToggle(MainTab, "Bật/Tắt Auto Farm Quái", "AutoFarm")
 
 -- [ XÂY DỰNG TAB: BOSS ]
+CreateButton(BossTab, "Quét Boss Bản Đồ", function()
+    local btn = BossTab:FindFirstChildOfClass("TextButton") 
+    if btn then btn.Text = "Đang quét..." end
+    
+    task.spawn(function()
+        ScanAllMap()
+        if btn then btn.Text = "Quét Boss Bản Đồ" end
+    end)
+end)
+
 CreateToggle(BossTab, "Bật/Tắt Auto Boss", "AutoBoss")
 CreateToggle(BossTab, "Farm Tất Cả Boss (Lùng Sục)", "FarmAllBosses")
 CreateSlider(BossTab, "Thời gian chờ Boss (s)", 0.1, 60, 0.5, "BossWaitTime", true)
@@ -676,8 +693,9 @@ local function GetBestMobTarget()
     local enemiesFolder = mapa and mapa:FindFirstChild("Enemies") or Workspace
 
     for _, obj in pairs(enemiesFolder:GetDescendants()) do
-        if obj:IsA("Model") and IsAlive(obj) and obj ~= LocalPlayer.Character and not IsBoss(obj) then
-            if Config.SelectedMobs[obj.Name] then
+        if obj:IsA("Model") and IsAlive(obj) and obj ~= LocalPlayer.Character then
+            -- Chỉ target quái thường (không phải boss) nếu nằm trong danh sách đã chọn
+            if Config.SelectedMobs[obj.Name] and not string.match(obj.Name:lower(), "boss$") then
                 local level = GetMobLevel(obj.Name)
                 local dist = (obj.HumanoidRootPart.Position - myPos).Magnitude
                 
@@ -731,11 +749,13 @@ local function EquipWeapon()
     if not char then return end
     
     local currentTool = char:FindFirstChildOfClass("Tool")
+    -- Cất tool nếu đang cầm sai tool
     if currentTool and currentTool.Name ~= Config.SelectedWeapon then
         currentTool.Parent = backpack
     end
     
-    if backpack and backpack:FindFirstChild(Config.SelectedWeapon) then
+    -- Chỉ trang bị lại nếu nhân vật chưa cầm nó
+    if not char:FindFirstChild(Config.SelectedWeapon) and backpack and backpack:FindFirstChild(Config.SelectedWeapon) then
         local tool = backpack:FindFirstChild(Config.SelectedWeapon)
         char.Humanoid:EquipTool(tool)
     end
@@ -748,10 +768,24 @@ local function Attack()
     if tool then
         -- Dùng Activate gốc của game
         tool:Activate() 
+        -- Click siêu tốc
+        pcall(function()
+            VirtualUser:CaptureController()
+            VirtualUser:Button1Down(Vector2.new(0,0))
+            VirtualUser:Button1Up(Vector2.new(0,0))
+        end)
     end
 end
 
--- Vòng lặp Farm Siêu Tốc mượt mà (Heartbeat) - Nhảy mục tiêu lập tức khi chết
+-- TỐI ƯU HÓA: Vòng lặp Auto Attack độc lập, chạy cực nhanh qua RenderStepped
+SafeConnect(RunService.RenderStepped, function()
+    if Config.AutoAttack then
+        EquipWeapon()
+        Attack()
+    end
+end)
+
+-- Vòng lặp Định Hướng & Di Chuyển (Heartbeat) - Nhảy mục tiêu lập tức khi chết
 SafeConnect(RunService.Heartbeat, function()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
@@ -766,7 +800,6 @@ SafeConnect(RunService.Heartbeat, function()
 
     -- LOGIC 1: Tìm Boss đang Spawn nếu Auto Boss hoặc Farm All Boss bật
     if (Config.AutoBoss or Config.FarmAllBosses) and #activeBosses > 0 then
-        -- Tìm xem có con boss nào trong danh sách đang sống trên Map không
         for _, bossName in ipairs(activeBosses) do
             local bInst = FindMobInWorkspace(bossName, true)
             if bInst and IsAlive(bInst) then
@@ -782,7 +815,6 @@ SafeConnect(RunService.Heartbeat, function()
         Config.LastBossCheck = tick()
         local targetPos = GetOffsetCFrame(bossToFight.HumanoidRootPart.CFrame)
         TeleportTo(targetPos)
-        if Config.AutoAttack then EquipWeapon(); Attack() end
         return -- Khóa mục tiêu ở Boss
     end
 
@@ -792,7 +824,6 @@ SafeConnect(RunService.Heartbeat, function()
         if targetMob and IsAlive(targetMob) then
             local targetPos = GetOffsetCFrame(targetMob.HumanoidRootPart.CFrame)
             TeleportTo(targetPos)
-            if Config.AutoAttack then EquipWeapon(); Attack() end
             return
         end
     end
@@ -816,12 +847,6 @@ SafeConnect(RunService.Heartbeat, function()
         end
         return
     end
-
-    -- LOGIC 5: Chỉ bật Auto Attack đứng tại chỗ
-    if not Config.AutoFarm and not Config.AutoBoss and not Config.FarmAllBosses and Config.AutoAttack then
-        EquipWeapon()
-        Attack()
-    end
 end)
 
 -- Tạo Anti-AFK để không bị văng game
@@ -831,4 +856,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 end)
 
-print("Rise Piece Superior Auto Farm V1 Loaded successfully! (Crash/Freeze Fixed)")
+print("Rise Piece Superior Auto Farm V2 Loaded successfully! (Super Fast Attack, Perfect Scanner)")
