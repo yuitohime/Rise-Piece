@@ -1,9 +1,10 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V4]
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V5]
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [V4 UPDATE]: Thêm Tab Player (Fly, Noclip, WalkSpeed, Inf Jump, Walk On Water)
--- Thêm Fast Attack siêu tốc, Trang bị nhiều vũ khí, Fix lỗi kéo UI.
--- UI Dropdown (Thu gọn danh sách), Fix lỗi kẹt máu khi Reset Character.
+-- [V5 UPDATE]: Thêm Tab Fruit (Quét Trái ác quỷ dạng Note + Tele).
+-- Thêm Tab Teleport (Quét toàn bộ NPC trong thư mục map/NPC).
+-- Cập nhật Scanner: Quét Boss nằm thẳng ngoài Workspace có đuôi "Lv.".
+-- FastAttack Siêu Tốc: Tối ưu hóa Auto Equip & Tăng số lần chém / frame.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -50,7 +51,7 @@ local Config = {
     Distance = 5,
     TweenDuration = 0.5,
     BossWaitTime = 0.5, 
-    SelectedWeapons = {}, -- V4: Hỗ trợ chọn nhiều vũ khí
+    SelectedWeapons = {}, 
     SelectedMobs = {}, 
     SelectedBosses = {},
     MobListCache = {}, 
@@ -59,7 +60,6 @@ local Config = {
     MenuOpen = false,
     CurrentBossIndex = 1,
     LastBossCheck = tick(),
-    -- V4 Player Configs
     WalkSpeedEnabled = false,
     WalkSpeed = 50,
     JumpPowerEnabled = false,
@@ -73,10 +73,10 @@ local Config = {
 
 local isTweening = false
 local currentTween = nil
-local activelyFarming = false -- Biến kiểm soát trạng thái có đang đánh quái không
+local activelyFarming = false 
 
 -- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN ]
-local UI_NAME = "RisePiece_PremiumUI_V4"
+local UI_NAME = "RisePiece_PremiumUI_V5"
 local targetParent = nil
 pcall(function()
     if get_hidden_gui or gethui then
@@ -92,7 +92,7 @@ if not targetParent then
 end
 
 if not targetParent then 
-    warn("[V4] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
+    warn("[V5] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
     return
 end
 
@@ -105,7 +105,7 @@ ScreenGui.Name = UI_NAME
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = targetParent
 
--- Nút Mở/Đóng (Hình Đa Giác - Diamond Shape)
+-- Nút Mở/Đóng 
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Name = "ToggleButton"
 ToggleButton.Size = UDim2.new(0, 40, 0, 40)
@@ -138,7 +138,7 @@ MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
-MainFrame.Draggable = true -- Hỗ trợ kéo thả mượt mà của Roblox
+MainFrame.Draggable = true 
 MainFrame.Parent = ScreenGui
 
 local MainCorner = Instance.new("UICorner")
@@ -194,11 +194,11 @@ local PanelPadding = Instance.new("UIPadding")
 PanelPadding.Parent = LeftPanel
 PanelPadding.PaddingTop = UDim.new(0, 10)
 
--- Tiêu đề Menu (Hiển thị V4)
+-- Tiêu đề Menu
 local MenuTitle = Instance.new("TextLabel")
 MenuTitle.Size = UDim2.new(1, 0, 0, 30)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH [V4]"
+MenuTitle.Text = "TIỆN ÍCH [V5]"
 MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
 MenuTitle.Font = Enum.Font.GothamBold
 MenuTitle.TextSize = 15
@@ -259,7 +259,9 @@ end
 
 local MainTab = CreateTabButton("Main")
 local BossTab = CreateTabButton("Boss")
-local PlayerTab = CreateTabButton("Player") -- V4 Tab
+local FruitTab = CreateTabButton("Fruit") -- V5 Tab Trái Ác Quỷ
+local TeleportTab = CreateTabButton("Teleport") -- V5 Tab Dịch chuyển NPC
+local PlayerTab = CreateTabButton("Player") 
 local SettingTab = CreateTabButton("Setting")
 
 -- [ COMPONENTS HỖ TRỢ ]
@@ -396,7 +398,7 @@ local function CreateSlider(parent, text, min, max, default, configKey, isDecima
     return frame
 end
 
--- Tối ưu hóa UI: V4 Khung Dropdown thu gọn
+-- UI Khung Dropdown thu gọn
 local function CreateDropdown(parent, titleText)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(1, 0, 0, 35)
@@ -469,13 +471,16 @@ local function GetMobLevel(mobName)
     return level and tonumber(level) or 1
 end
 
--- Hàm Quét Chung
+-- [ V5 CẬP NHẬT: Quét Chung Nhận Diện Boss & Quái ]
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
         if string.match(lowerName, "^spawnner") or string.match(lowerName, "^spawner") then return end
         
-        if string.match(lowerName, "boss$") then
+        -- V5: Nhận diện Boss nằm thẳng ngoài Workspace có chữ "Lv." ở cuối
+        local isDirectWorkspace = (obj.Parent == Workspace)
+        
+        if string.match(lowerName, "boss$") or (isDirectWorkspace and string.match(lowerName, "lv%.%s*%d+")) then
             Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
         else
             Config.MobListCache[obj.Name] = true
@@ -559,6 +564,9 @@ local function ScanAllMap()
             if i % 1000 == 0 then task.wait() end 
         end
     end
+    -- Quét luôn workspace thẳng cho boss
+    for _, obj in pairs(Workspace:GetChildren()) do ScanObj(obj) end
+    
     for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
     for name, _ in pairs(Config.SelectedBosses) do 
         if Config.BossDataCache[name] then Config.SelectedBosses[name] = true end
@@ -566,10 +574,7 @@ local function ScanAllMap()
     UpdateMobUIList(); UpdateBossUIList()
 end
 
-CreateButton(MainTab, "Quét Quái Bản Đồ", function()
-    ScanAllMap()
-end)
-
+CreateButton(MainTab, "Quét Quái Bản Đồ", function() ScanAllMap() end)
 CreateToggle(MainTab, "Bật/Tắt Auto Farm Quái", "AutoFarm")
 CreateToggle(MainTab, "Auto Skill [Z]", "AutoSkillZ")
 CreateToggle(MainTab, "Auto Skill [X]", "AutoSkillX")
@@ -582,7 +587,178 @@ CreateToggle(BossTab, "Bật/Tắt Auto Boss", "AutoBoss")
 CreateToggle(BossTab, "Farm Tất Cả Boss (Lùng Sục)", "FarmAllBosses")
 CreateSlider(BossTab, "Thời gian chờ Boss (s)", 0.1, 60, 0.5, "BossWaitTime", true)
 
--- [ XÂY DỰNG TAB: PLAYER (V4 TÍNH NĂNG MỚI) ]
+-- =========================================================
+-- [ V5 MỚI: XÂY DỰNG TAB FRUIT (TRÁI ÁC QUỶ) ]
+-- =========================================================
+local FruitScrollFrame = Instance.new("ScrollingFrame")
+FruitScrollFrame.Size = UDim2.new(1, 0, 0, 200)
+FruitScrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+FruitScrollFrame.ScrollBarThickness = 4
+FruitScrollFrame.Parent = FruitTab
+
+local FruitLayout = Instance.new("UIListLayout")
+FruitLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FruitLayout.Padding = UDim.new(0, 5)
+FruitLayout.Parent = FruitScrollFrame
+
+-- Hàm Helper Teleport Dùng Chung
+local function TeleportToPos(pos)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = CFrame.new(pos)
+    end
+end
+
+local function ScanFruitsAndUpdateUI()
+    for _, child in pairs(FruitScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    
+    local foundFruits = {}
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if (obj:IsA("Tool") or obj:IsA("Model")) and string.match(obj.Name:lower(), "fruit") then
+            local part = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+            if part then
+                table.insert(foundFruits, {Name = obj.Name, Pos = part.Position})
+            end
+        end
+    end
+    
+    if #foundFruits == 0 then
+        local msg = Instance.new("TextLabel")
+        msg.Size = UDim2.new(1, 0, 0, 30)
+        msg.BackgroundTransparency = 1
+        msg.Text = "Không tìm thấy Trái Ác Quỷ nào trong map."
+        msg.TextColor3 = Color3.fromRGB(200, 100, 100)
+        msg.Font = Enum.Font.Gotham
+        msg.TextSize = 13
+        msg.Parent = FruitScrollFrame
+    else
+        for _, data in ipairs(foundFruits) do
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Size = UDim2.new(1, 0, 0, 45)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+            itemFrame.Parent = FruitScrollFrame
+            Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 6)
+            
+            local noteLabel = Instance.new("TextLabel")
+            noteLabel.Size = UDim2.new(0.7, 0, 1, 0)
+            noteLabel.Position = UDim2.new(0, 10, 0, 0)
+            noteLabel.BackgroundTransparency = 1
+            noteLabel.Text = "Note: Rơi Trái " .. data.Name
+            noteLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+            noteLabel.Font = Enum.Font.GothamSemibold
+            noteLabel.TextSize = 13
+            noteLabel.TextXAlignment = Enum.TextXAlignment.Left
+            noteLabel.Parent = itemFrame
+            
+            local teleBtn = Instance.new("TextButton")
+            teleBtn.Size = UDim2.new(0, 60, 0, 30)
+            teleBtn.Position = UDim2.new(1, -70, 0.5, -15)
+            teleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
+            teleBtn.Text = "Tele"
+            teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            teleBtn.Font = Enum.Font.GothamBold
+            teleBtn.Parent = itemFrame
+            Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
+            
+            teleBtn.MouseButton1Click:Connect(function()
+                TeleportToPos(data.Pos)
+            end)
+        end
+    end
+    FruitScrollFrame.CanvasSize = UDim2.new(0, 0, 0, FruitLayout.AbsoluteContentSize.Y)
+end
+
+CreateButton(FruitTab, "Quét Tìm Trái Ác Quỷ", ScanFruitsAndUpdateUI)
+
+-- =========================================================
+-- [ V5 MỚI: XÂY DỰNG TAB TELEPORT (NPC) ]
+-- =========================================================
+local NpcScrollFrame = Instance.new("ScrollingFrame")
+NpcScrollFrame.Size = UDim2.new(1, 0, 0, 200)
+NpcScrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+NpcScrollFrame.ScrollBarThickness = 4
+NpcScrollFrame.Parent = TeleportTab
+
+local NpcLayout = Instance.new("UIListLayout")
+NpcLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NpcLayout.Padding = UDim.new(0, 5)
+NpcLayout.Parent = NpcScrollFrame
+
+local function ScanNPCsAndUpdateUI()
+    for _, child in pairs(NpcScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    
+    local foundNPCs = {}
+    local mapa = Workspace:FindFirstChild("Mapa") or Workspace:FindFirstChild("Map")
+    local npcFolders = {}
+    
+    -- Thêm các thư mục có thể chứa NPC
+    if mapa then 
+        if mapa:FindFirstChild("NPC") then table.insert(npcFolders, mapa.NPC) end
+        if mapa:FindFirstChild("Npcs") then table.insert(npcFolders, mapa.Npcs) end
+        if mapa:FindFirstChild("NPCs") then table.insert(npcFolders, mapa.NPCs) end
+    end
+    if Workspace:FindFirstChild("NPC") then table.insert(npcFolders, Workspace.NPC) end
+    if Workspace:FindFirstChild("NPCs") then table.insert(npcFolders, Workspace.NPCs) end
+    
+    local function addNpc(obj)
+        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+            table.insert(foundNPCs, {Name = obj.Name, Pos = obj.HumanoidRootPart.Position})
+        end
+    end
+    
+    if #npcFolders > 0 then
+        for _, folder in ipairs(npcFolders) do
+            for _, obj in ipairs(folder:GetChildren()) do addNpc(obj) end
+        end
+    else
+        -- Fallback: Quét toàn bộ workspace tìm những model có tên chứa NPC
+        for _, obj in ipairs(Workspace:GetChildren()) do
+            if obj:IsA("Model") and obj.Name:lower():match("npc") then addNpc(obj) end
+        end
+    end
+    
+    for _, data in ipairs(foundNPCs) do
+        local itemFrame = Instance.new("Frame")
+        itemFrame.Size = UDim2.new(1, 0, 0, 40)
+        itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        itemFrame.Parent = NpcScrollFrame
+        Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 6)
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
+        nameLabel.Position = UDim2.new(0, 10, 0, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = data.Name
+        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        nameLabel.Font = Enum.Font.GothamSemibold
+        nameLabel.TextSize = 13
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Parent = itemFrame
+        
+        local teleBtn = Instance.new("TextButton")
+        teleBtn.Size = UDim2.new(0, 60, 0, 30)
+        teleBtn.Position = UDim2.new(1, -70, 0.5, -15)
+        teleBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+        teleBtn.Text = "Tele"
+        teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        teleBtn.Font = Enum.Font.GothamBold
+        teleBtn.Parent = itemFrame
+        Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
+        
+        teleBtn.MouseButton1Click:Connect(function()
+            TeleportToPos(data.Pos)
+        end)
+    end
+    NpcScrollFrame.CanvasSize = UDim2.new(0, 0, 0, NpcLayout.AbsoluteContentSize.Y)
+end
+
+CreateButton(TeleportTab, "Quét Danh Sách NPC", ScanNPCsAndUpdateUI)
+
+-- [ XÂY DỰNG TAB: PLAYER ]
 CreateToggle(PlayerTab, "Bật WalkSpeed", "WalkSpeedEnabled")
 CreateSlider(PlayerTab, "Tốc độ chạy", 16, 300, 50, "WalkSpeed", false)
 CreateToggle(PlayerTab, "Bật JumpPower", "JumpPowerEnabled")
@@ -648,7 +824,6 @@ CreateToggle(SettingTab, "Bật FAST ATTACK (Siêu nhanh)", "FastAttack")
 
 CreateButton(SettingTab, "Quét Vũ Khí (Chọn nhiều cái)", function() UpdateWeaponList() end)
 
--- Danh sách vũ khí đổi thành Dropdown để gọn
 local WeaponListContainer, WeaponListLayout = CreateDropdown(SettingTab, "Danh Sách Vũ Khí")
 
 function UpdateWeaponList()
@@ -669,7 +844,6 @@ function UpdateWeaponList()
     for toolName, _ in pairs(tools) do
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 0, 30)
-        -- V4: Hiển thị xanh nếu nằm trong SelectedWeapons
         btn.BackgroundColor3 = Config.SelectedWeapons[toolName] and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(40, 40, 45)
         btn.Text = " " .. toolName
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -733,6 +907,13 @@ local function FindMobInWorkspace(name, requireAlive)
             end
         end
     end
+    -- Quét fallback Workspace ngoài cùng
+    for _, obj in pairs(Workspace:GetChildren()) do
+        if obj:IsA("Model") and obj.Name == name then
+            if requireAlive and not IsAlive(obj) then continue end
+            return obj
+        end
+    end
     return nil
 end
 
@@ -773,7 +954,7 @@ local function TeleportTo(targetCFrame)
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local rootPart = char.HumanoidRootPart
     local hum = char:FindFirstChild("Humanoid")
-    if hum and hum.Health <= 0 then return end -- V4 Fix kẹt xác
+    if hum and hum.Health <= 0 then return end 
     
     if Config.MovementMode == "Teleport" then
         if currentTween then currentTween:Cancel(); currentTween = nil; isTweening = false end
@@ -796,36 +977,27 @@ local function TeleportTo(targetCFrame)
     end
 end
 
--- V4: Hỗ trợ cầm CÙNG LÚC nhiều vũ khí
-local function EquipWeapons()
+-- V5 CẬP NHẬT: Tối Ưu Hóa Trang Bị Vũ Khí Ngay Lập Tức
+local function EquipWeaponsFast()
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
     if not char or not backpack then return end
     
-    -- Cất vũ khí không được chọn
-    for _, tool in ipairs(char:GetChildren()) do
-        if tool:IsA("Tool") and not Config.SelectedWeapons[tool.Name] then
-            tool.Parent = backpack
-        end
-    end
-    
-    -- Lấy tất cả vũ khí được chọn đưa vào Character (Cầm nhiều vũ khí)
     for toolName, _ in pairs(Config.SelectedWeapons) do
-        local tool = backpack:FindFirstChild(toolName)
-        if tool then
-            tool.Parent = char
+        local toolInBp = backpack:FindFirstChild(toolName)
+        if toolInBp then
+            toolInBp.Parent = char
         end
     end
 end
 
--- V4: Fast Attack siêu tốc, Không đụng UI
+-- V5 CẬP NHẬT: Fast Attack Siêu Tốc (Ép Click 15 lần/frame)
 SafeConnect(RunService.RenderStepped, function()
     if not LocalPlayer.Character then return end
     
     if Config.FastAttack or Config.AutoAttack then
-        EquipWeapons()
+        EquipWeaponsFast() 
         
-        -- Chỉ ép click chuột ảo khi đang thực sự đánh mục tiêu (Tránh kẹt menu)
         if activelyFarming then
             pcall(function()
                 VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
@@ -833,12 +1005,13 @@ SafeConnect(RunService.RenderStepped, function()
             end)
         end
         
-        -- Dùng Activate thẳng vào Tool để tăng tốc độ chém
-        for _, tool in ipairs(LocalPlayer.Character:GetChildren()) do
+        -- Dùng Activate thẳng vào Tool để tăng tốc độ chém lên tối đa
+        local tools = LocalPlayer.Character:GetChildren()
+        for i = 1, #tools do
+            local tool = tools[i]
             if tool:IsA("Tool") then
                 if Config.FastAttack then
-                    -- Ép activate 5 lần 1 frame không cooldown
-                    for i = 1, 5 do tool:Activate() end
+                    for j = 1, 15 do tool:Activate() end -- V5: Tăng lên 15 lần một frame để có tốc độ điên rồ
                 else
                     tool:Activate()
                 end
@@ -862,13 +1035,12 @@ SafeConnect(RunService.Heartbeat, function()
     end
 end)
 
--- [ VÒNG LẶP DI CHUYỂN AUTO FARM & XỬ LÝ FIX LỖI DEAD CỦA V4 ]
+-- [ VÒNG LẶP DI CHUYỂN AUTO FARM ]
 SafeConnect(RunService.Heartbeat, function()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then activelyFarming = false; return end
     local humanoid = char:FindFirstChild("Humanoid")
     
-    -- V4 FIX: Nếu máu <= 0, Dừng mọi hoạt động Farm để game xử lý hồi sinh
     if humanoid and humanoid.Health <= 0 then 
         activelyFarming = false
         if isTweening and currentTween then currentTween:Cancel(); currentTween = nil; isTweening = false end
@@ -892,7 +1064,7 @@ SafeConnect(RunService.Heartbeat, function()
 
     if bossToFight then
         activelyFarming = true
-        if humanoid then humanoid:ChangeState(11) end -- Chỉ Noclip 11 khi đang áp sát mục tiêu
+        if humanoid then humanoid:ChangeState(11) end 
         Config.LastBossCheck = tick()
         local targetPos = GetOffsetCFrame(bossToFight.HumanoidRootPart.CFrame)
         TeleportTo(targetPos)
@@ -908,7 +1080,6 @@ SafeConnect(RunService.Heartbeat, function()
             TeleportTo(targetPos)
             return
         else
-            -- Lùng sục tọa độ quái thường
             local roamingTargetPos = nil
             for selectedMob, _ in pairs(Config.SelectedMobs) do
                 if Config.MobDataCache[selectedMob] then
@@ -945,10 +1116,10 @@ SafeConnect(RunService.Heartbeat, function()
         return
     end
     
-    activelyFarming = false -- Nếu không farm gì, trả trạng thái về false để Player tự điều khiển
+    activelyFarming = false
 end)
 
--- [ PLAYER TAB FEATURES (V4) ]
+-- [ PLAYER TAB FEATURES ]
 local flyBv, flyBg
 local waterPlatform = Instance.new("Part")
 waterPlatform.Size = Vector3.new(8, 1, 8)
@@ -964,11 +1135,9 @@ SafeConnect(RunService.Stepped, function()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     
     if hum and hum.Health > 0 then
-        -- WalkSpeed & JumpPower
         if Config.WalkSpeedEnabled then hum.WalkSpeed = Config.WalkSpeed end
         if Config.JumpPowerEnabled then hum.JumpPower = Config.JumpPower end
         
-        -- Fly
         if Config.Fly and hrp and not activelyFarming then
             if not flyBv or not flyBv.Parent then
                 flyBv = Instance.new("BodyVelocity")
@@ -995,7 +1164,6 @@ SafeConnect(RunService.Stepped, function()
             if hum.PlatformStand and not activelyFarming then hum.PlatformStand = false end
         end
         
-        -- Noclip
         if Config.Noclip and not activelyFarming then
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") and part.CanCollide then
@@ -1004,7 +1172,6 @@ SafeConnect(RunService.Stepped, function()
             end
         end
         
-        -- Walk On Water (Tạo sàn tàng hình dưới chân nếu gặp nước)
         if Config.WalkOnWater and hrp then
             hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, false)
             local ray = Ray.new(hrp.Position, Vector3.new(0, -6, 0))
@@ -1022,7 +1189,6 @@ SafeConnect(RunService.Stepped, function()
     end
 end)
 
--- Inf Jump
 SafeConnect(UserInputService.JumpRequest, function()
     if Config.InfJump then
         local char = LocalPlayer.Character
@@ -1032,11 +1198,10 @@ SafeConnect(UserInputService.JumpRequest, function()
     end
 end)
 
--- Tạo Anti-AFK để không bị văng game
 SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
     task.wait(1)
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("Rise Piece Superior Auto Farm V4 Loaded successfully! (Added Player Tab, Fly, Noclip, FastAttack, Multiple Weapons, Bug Fixes)")
+print("Rise Piece Superior Auto Farm V5 Loaded successfully! (Fruit Scanner, NPC Teleport, Optimized FastAttack, Boss Fixes)")
