@@ -1,9 +1,8 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V2]
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V3]
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [V2 UPDATE]: Fix Auto Attack cực nhanh (tách luồng RenderStepped).
--- Cập nhật bộ lọc Scanner: Xóa NPC (spawnner), Lọc chuẩn Boss (đuôi boss) và Quái.
--- Thêm nút Quét riêng biệt ở Tab Boss.
+-- [V3 UPDATE]: Thêm Auto Skill Z, X, C, V, E (VirtualInputManager).
+-- Thêm quét quái tại workspace.Monsters và Hệ thống lùng sục tọa độ Quái.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -12,6 +11,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 
 -- Đợi LocalPlayer load xong để tránh đơ
 while not Players.LocalPlayer do task.wait() end
@@ -39,6 +39,11 @@ local Config = {
     AutoBoss = false,
     FarmAllBosses = false, 
     AutoAttack = false,
+    AutoSkillZ = false,
+    AutoSkillX = false,
+    AutoSkillC = false,
+    AutoSkillV = false,
+    AutoSkillE = false,
     MovementMode = "Teleport", 
     FarmPosition = "Trên đầu",
     Distance = 5,
@@ -49,6 +54,7 @@ local Config = {
     SelectedBosses = {},
     MobListCache = {}, 
     BossDataCache = {}, 
+    MobDataCache = {}, -- V3: Lưu tọa độ quái thường
     TargetMob = nil,
     MenuOpen = false,
     CurrentBossIndex = 1,
@@ -59,7 +65,7 @@ local isTweening = false
 local currentTween = nil
 
 -- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN (CHỐNG LỖI KHÔNG HIỆN MENU) ]
-local UI_NAME = "RisePiece_PremiumUI_V2"
+local UI_NAME = "RisePiece_PremiumUI_V3"
 
 local targetParent = nil
 pcall(function()
@@ -76,7 +82,7 @@ if not targetParent then
 end
 
 if not targetParent then 
-    warn("[V2] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
+    warn("[V3] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
     return
 end
 
@@ -176,11 +182,11 @@ local PanelPadding = Instance.new("UIPadding")
 PanelPadding.Parent = LeftPanel
 PanelPadding.PaddingTop = UDim.new(0, 10)
 
--- Tiêu đề Menu (Hiển thị V2)
+-- Tiêu đề Menu (Hiển thị V3)
 local MenuTitle = Instance.new("TextLabel")
 MenuTitle.Size = UDim2.new(1, 0, 0, 30)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH [V2]"
+MenuTitle.Text = "TIỆN ÍCH [V3]"
 MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
 MenuTitle.Font = Enum.Font.GothamBold
 MenuTitle.TextSize = 15
@@ -377,7 +383,26 @@ local function CreateSlider(parent, text, min, max, default, configKey, isDecima
     return frame
 end
 
--- [ LOGIC NHẬN DIỆN MỤC TIÊU (V2 - LỌC CHUẨN XÁC) ]
+-- [ TỐI ƯU HÓA: HỆ THỐNG LẤY THƯ MỤC QUÁI ]
+local function GetMobFolders()
+    local folders = {}
+    local mapa = Workspace:FindFirstChild("Mapa")
+    if mapa and mapa:FindFirstChild("Enemies") then
+        table.insert(folders, mapa.Enemies)
+    end
+    -- V3: Bổ sung quét quái nằm trong mục Monsters của Workspace
+    local monsters = Workspace:FindFirstChild("Monsters")
+    if monsters then
+        table.insert(folders, monsters)
+    end
+    
+    if #folders == 0 then
+        table.insert(folders, Workspace)
+    end
+    return folders
+end
+
+-- [ LOGIC NHẬN DIỆN MỤC TIÊU ]
 local function IsAlive(mob)
     return mob and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 and mob:FindFirstChild("HumanoidRootPart")
 end
@@ -387,7 +412,7 @@ local function GetMobLevel(mobName)
     return level and tonumber(level) or 1
 end
 
--- Hàm Quét Chung Cho Cả Boss và Quái (V2)
+-- Hàm Quét Chung Cho Cả Boss và Quái (V3)
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
@@ -403,11 +428,12 @@ local function ScanObj(obj)
         else
             -- 3. Quái thường (Không có chữ boss ở cuối thì là quái)
             Config.MobListCache[obj.Name] = true
+            Config.MobDataCache[obj.Name] = obj.HumanoidRootPart.Position -- Lưu vị trí để phục vụ Farm Tọa Độ
         end
     end
 end
 
--- [ XÂY DỰNG TAB: MAIN (QUÉT QUÁI & FARM) ]
+-- [ XÂY DỰNG TAB: MAIN (QUÉT QUÁI & FARM & AUTO SKILL) ]
 local MobListContainer = Instance.new("ScrollingFrame")
 MobListContainer.Size = UDim2.new(1, 0, 0, 150)
 MobListContainer.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
@@ -484,14 +510,15 @@ local function UpdateBossUIList()
     BossListContainer.CanvasSize = UDim2.new(0, 0, 0, BossListLayout.AbsoluteContentSize.Y)
 end
 
--- TỐI ƯU HÓA: Quét chung Bản Đồ
+-- TỐI ƯU HÓA: Quét chung Bản Đồ theo danh sách Folder Mới
 local function ScanAllMap()
-    local mapa = Workspace:FindFirstChild("Mapa")
-    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies")
+    local folders = GetMobFolders()
     
-    if enemiesFolder then
-        for _, obj in pairs(enemiesFolder:GetDescendants()) do 
-            ScanObj(obj) 
+    if #folders > 0 and folders[1] ~= Workspace then
+        for _, folder in ipairs(folders) do
+            for _, obj in pairs(folder:GetDescendants()) do 
+                ScanObj(obj) 
+            end
         end
     else
         local allDescendants = Workspace:GetDescendants()
@@ -522,6 +549,13 @@ end)
 
 MobListContainer.Parent = MainTab
 CreateToggle(MainTab, "Bật/Tắt Auto Farm Quái", "AutoFarm")
+
+-- Thêm Nút Auto Skill vào Main Tab
+CreateToggle(MainTab, "Auto Skill [Z]", "AutoSkillZ")
+CreateToggle(MainTab, "Auto Skill [X]", "AutoSkillX")
+CreateToggle(MainTab, "Auto Skill [C]", "AutoSkillC")
+CreateToggle(MainTab, "Auto Skill [V]", "AutoSkillV")
+CreateToggle(MainTab, "Auto Skill [E]", "AutoSkillE")
 
 -- [ XÂY DỰNG TAB: BOSS ]
 CreateButton(BossTab, "Quét Boss Bản Đồ", function()
@@ -671,12 +705,13 @@ local function GetOffsetCFrame(baseCFrame)
 end
 
 local function FindMobInWorkspace(name, requireAlive)
-    local mapa = Workspace:FindFirstChild("Mapa")
-    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies") or Workspace
-    for _, obj in pairs(enemiesFolder:GetDescendants()) do
-        if obj:IsA("Model") and obj.Name == name then
-            if requireAlive and not IsAlive(obj) then continue end
-            return obj
+    local folders = GetMobFolders()
+    for _, folder in ipairs(folders) do
+        for _, obj in pairs(folder:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == name then
+                if requireAlive and not IsAlive(obj) then continue end
+                return obj
+            end
         end
     end
     return nil
@@ -689,24 +724,25 @@ local function GetBestMobTarget()
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local myPos = hrp and hrp.Position or Vector3.new(0,0,0)
 
-    local mapa = Workspace:FindFirstChild("Mapa")
-    local enemiesFolder = mapa and mapa:FindFirstChild("Enemies") or Workspace
+    local folders = GetMobFolders()
 
-    for _, obj in pairs(enemiesFolder:GetDescendants()) do
-        if obj:IsA("Model") and IsAlive(obj) and obj ~= LocalPlayer.Character then
-            -- Chỉ target quái thường (không phải boss) nếu nằm trong danh sách đã chọn
-            if Config.SelectedMobs[obj.Name] and not string.match(obj.Name:lower(), "boss$") then
-                local level = GetMobLevel(obj.Name)
-                local dist = (obj.HumanoidRootPart.Position - myPos).Magnitude
-                
-                if level > highestLevel then
-                    highestLevel = level
-                    shortestDist = dist
-                    bestTarget = obj
-                elseif level == highestLevel then
-                    if dist < shortestDist then
+    for _, folder in ipairs(folders) do
+        for _, obj in pairs(folder:GetDescendants()) do
+            if obj:IsA("Model") and IsAlive(obj) and obj ~= LocalPlayer.Character then
+                -- Chỉ target quái thường (không phải boss) nếu nằm trong danh sách đã chọn
+                if Config.SelectedMobs[obj.Name] and not string.match(obj.Name:lower(), "boss$") then
+                    local level = GetMobLevel(obj.Name)
+                    local dist = (obj.HumanoidRootPart.Position - myPos).Magnitude
+                    
+                    if level > highestLevel then
+                        highestLevel = level
                         shortestDist = dist
                         bestTarget = obj
+                    elseif level == highestLevel then
+                        if dist < shortestDist then
+                            shortestDist = dist
+                            bestTarget = obj
+                        end
                     end
                 end
             end
@@ -785,6 +821,22 @@ SafeConnect(RunService.RenderStepped, function()
     end
 end)
 
+-- V3: Vòng lặp bắn SKILL an toàn, không block main thread
+local lastSkillTime = tick()
+SafeConnect(RunService.Heartbeat, function()
+    if tick() - lastSkillTime > 0.5 then
+        lastSkillTime = tick()
+        -- Chỉ Auto Skill khi nhân vật đang chạy đánh quái hoặc đánh Boss
+        if Config.AutoFarm or Config.AutoBoss then
+            if Config.AutoSkillZ then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Z, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Z, false, game) end
+            if Config.AutoSkillX then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.X, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.X, false, game) end
+            if Config.AutoSkillC then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.C, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game) end
+            if Config.AutoSkillV then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.V, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.V, false, game) end
+            if Config.AutoSkillE then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) end
+        end
+    end
+end)
+
 -- Vòng lặp Định Hướng & Di Chuyển (Heartbeat) - Nhảy mục tiêu lập tức khi chết
 SafeConnect(RunService.Heartbeat, function()
     local char = LocalPlayer.Character
@@ -825,6 +877,21 @@ SafeConnect(RunService.Heartbeat, function()
             local targetPos = GetOffsetCFrame(targetMob.HumanoidRootPart.CFrame)
             TeleportTo(targetPos)
             return
+        else
+            -- Lùng sục và đi tới tọa độ quái thường (Auto Farm Tọa Độ nếu quái chưa spawn)
+            local roamingTargetPos = nil
+            for selectedMob, _ in pairs(Config.SelectedMobs) do
+                if Config.MobDataCache[selectedMob] then
+                    roamingTargetPos = Config.MobDataCache[selectedMob]
+                    break
+                end
+            end
+            
+            if roamingTargetPos then
+                local waitCFrame = GetOffsetCFrame(CFrame.new(roamingTargetPos))
+                TeleportTo(waitCFrame)
+                return
+            end
         end
     end
 
@@ -856,4 +923,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
 end)
 
-print("Rise Piece Superior Auto Farm V2 Loaded successfully! (Super Fast Attack, Perfect Scanner)")
+print("Rise Piece Superior Auto Farm V3 Loaded successfully! (Added Workspace.Monsters Scan, Auto Skill, Mob Spawners Coords)")
