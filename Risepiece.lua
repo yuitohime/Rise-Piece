@@ -1,10 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V5]
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V6]
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [V5 UPDATE]: Thêm Tab Fruit (Quét Trái ác quỷ dạng Note + Tele).
--- Thêm Tab Teleport (Quét toàn bộ NPC trong thư mục map/NPC).
--- Cập nhật Scanner: Quét Boss nằm thẳng ngoài Workspace có đuôi "Lv.".
--- FastAttack Siêu Tốc: Tối ưu hóa Auto Equip & Tăng số lần chém / frame.
+-- [V6 UPDATE]: Fix lỗi Teleport NPC (Quét chuẩn Workspace.Map.NPC).
+-- Fix FastAttack (Giảm tốc độ chống lỗi click loạn xạ).
+-- Thêm Tab Fishing (Auto Câu cá thông minh, nhận diện TipAttachment).
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -41,6 +40,7 @@ local Config = {
     FarmAllBosses = false, 
     AutoAttack = false,
     FastAttack = false,
+    AutoFishing = false, -- V6 Auto Câu cá
     AutoSkillZ = false,
     AutoSkillX = false,
     AutoSkillC = false,
@@ -76,7 +76,7 @@ local currentTween = nil
 local activelyFarming = false 
 
 -- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN ]
-local UI_NAME = "RisePiece_PremiumUI_V5"
+local UI_NAME = "RisePiece_PremiumUI_V6"
 local targetParent = nil
 pcall(function()
     if get_hidden_gui or gethui then
@@ -92,7 +92,7 @@ if not targetParent then
 end
 
 if not targetParent then 
-    warn("[V5] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
+    warn("[V6] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
     return
 end
 
@@ -198,7 +198,7 @@ PanelPadding.PaddingTop = UDim.new(0, 10)
 local MenuTitle = Instance.new("TextLabel")
 MenuTitle.Size = UDim2.new(1, 0, 0, 30)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH [V5]"
+MenuTitle.Text = "TIỆN ÍCH [V6]"
 MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
 MenuTitle.Font = Enum.Font.GothamBold
 MenuTitle.TextSize = 15
@@ -259,8 +259,9 @@ end
 
 local MainTab = CreateTabButton("Main")
 local BossTab = CreateTabButton("Boss")
-local FruitTab = CreateTabButton("Fruit") -- V5 Tab Trái Ác Quỷ
-local TeleportTab = CreateTabButton("Teleport") -- V5 Tab Dịch chuyển NPC
+local FruitTab = CreateTabButton("Fruit") 
+local TeleportTab = CreateTabButton("Teleport") 
+local FishingTab = CreateTabButton("Fishing") -- V6 Tab
 local PlayerTab = CreateTabButton("Player") 
 local SettingTab = CreateTabButton("Setting")
 
@@ -446,11 +447,11 @@ end
 -- [ TỐI ƯU HÓA: HỆ THỐNG LẤY THƯ MỤC QUÁI ]
 local function GetMobFolders()
     local folders = {}
-    local mapa = Workspace:FindFirstChild("Mapa")
+    local mapa = Workspace:FindFirstChild("Mapa") or Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("map")
     if mapa and mapa:FindFirstChild("Enemies") then
         table.insert(folders, mapa.Enemies)
     end
-    local monsters = Workspace:FindFirstChild("Monsters")
+    local monsters = Workspace:FindFirstChild("Monsters") or Workspace:FindFirstChild("monsters")
     if monsters then
         table.insert(folders, monsters)
     end
@@ -471,13 +472,12 @@ local function GetMobLevel(mobName)
     return level and tonumber(level) or 1
 end
 
--- [ V5 CẬP NHẬT: Quét Chung Nhận Diện Boss & Quái ]
+-- Quét Chung Nhận Diện Boss & Quái
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
         if string.match(lowerName, "^spawnner") or string.match(lowerName, "^spawner") then return end
         
-        -- V5: Nhận diện Boss nằm thẳng ngoài Workspace có chữ "Lv." ở cuối
         local isDirectWorkspace = (obj.Parent == Workspace)
         
         if string.match(lowerName, "boss$") or (isDirectWorkspace and string.match(lowerName, "lv%.%s*%d+")) then
@@ -564,7 +564,6 @@ local function ScanAllMap()
             if i % 1000 == 0 then task.wait() end 
         end
     end
-    -- Quét luôn workspace thẳng cho boss
     for _, obj in pairs(Workspace:GetChildren()) do ScanObj(obj) end
     
     for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
@@ -588,7 +587,7 @@ CreateToggle(BossTab, "Farm Tất Cả Boss (Lùng Sục)", "FarmAllBosses")
 CreateSlider(BossTab, "Thời gian chờ Boss (s)", 0.1, 60, 0.5, "BossWaitTime", true)
 
 -- =========================================================
--- [ V5 MỚI: XÂY DỰNG TAB FRUIT (TRÁI ÁC QUỶ) ]
+-- [ TAB FRUIT (TRÁI ÁC QUỶ) ]
 -- =========================================================
 local FruitScrollFrame = Instance.new("ScrollingFrame")
 FruitScrollFrame.Size = UDim2.new(1, 0, 0, 200)
@@ -601,7 +600,6 @@ FruitLayout.SortOrder = Enum.SortOrder.LayoutOrder
 FruitLayout.Padding = UDim.new(0, 5)
 FruitLayout.Parent = FruitScrollFrame
 
--- Hàm Helper Teleport Dùng Chung
 local function TeleportToPos(pos)
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -669,11 +667,10 @@ local function ScanFruitsAndUpdateUI()
     end
     FruitScrollFrame.CanvasSize = UDim2.new(0, 0, 0, FruitLayout.AbsoluteContentSize.Y)
 end
-
 CreateButton(FruitTab, "Quét Tìm Trái Ác Quỷ", ScanFruitsAndUpdateUI)
 
 -- =========================================================
--- [ V5 MỚI: XÂY DỰNG TAB TELEPORT (NPC) ]
+-- [ V6 CẬP NHẬT: TAB TELEPORT (NPC) QUÉT CHUẨN XÁC ]
 -- =========================================================
 local NpcScrollFrame = Instance.new("ScrollingFrame")
 NpcScrollFrame.Size = UDim2.new(1, 0, 0, 200)
@@ -692,17 +689,21 @@ local function ScanNPCsAndUpdateUI()
     end
     
     local foundNPCs = {}
-    local mapa = Workspace:FindFirstChild("Mapa") or Workspace:FindFirstChild("Map")
     local npcFolders = {}
     
-    -- Thêm các thư mục có thể chứa NPC
-    if mapa then 
-        if mapa:FindFirstChild("NPC") then table.insert(npcFolders, mapa.NPC) end
-        if mapa:FindFirstChild("Npcs") then table.insert(npcFolders, mapa.Npcs) end
-        if mapa:FindFirstChild("NPCs") then table.insert(npcFolders, mapa.NPCs) end
+    -- V6: Quét tìm các thư mục có tên map/mapa và NPC
+    for _, child in ipairs(Workspace:GetChildren()) do
+        local name = child.Name:lower()
+        if name == "map" or name == "mapa" then
+            for _, sub in ipairs(child:GetChildren()) do
+                if sub.Name:lower():match("npc") then
+                    table.insert(npcFolders, sub)
+                end
+            end
+        elseif name:match("npc") then
+            table.insert(npcFolders, child)
+        end
     end
-    if Workspace:FindFirstChild("NPC") then table.insert(npcFolders, Workspace.NPC) end
-    if Workspace:FindFirstChild("NPCs") then table.insert(npcFolders, Workspace.NPCs) end
     
     local function addNpc(obj)
         if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
@@ -715,7 +716,7 @@ local function ScanNPCsAndUpdateUI()
             for _, obj in ipairs(folder:GetChildren()) do addNpc(obj) end
         end
     else
-        -- Fallback: Quét toàn bộ workspace tìm những model có tên chứa NPC
+        -- Fallback:
         for _, obj in ipairs(Workspace:GetChildren()) do
             if obj:IsA("Model") and obj.Name:lower():match("npc") then addNpc(obj) end
         end
@@ -755,8 +756,103 @@ local function ScanNPCsAndUpdateUI()
     end
     NpcScrollFrame.CanvasSize = UDim2.new(0, 0, 0, NpcLayout.AbsoluteContentSize.Y)
 end
-
 CreateButton(TeleportTab, "Quét Danh Sách NPC", ScanNPCsAndUpdateUI)
+
+-- =========================================================
+-- [ V6 MỚI: TAB FISHING (CÂU CÁ TỰ ĐỘNG) ]
+-- =========================================================
+CreateToggle(FishingTab, "Bật/Tắt Auto Câu Cá", "AutoFishing")
+
+local lastFishingCast = tick()
+SafeConnect(RunService.Heartbeat, function()
+    if Config.AutoFishing then
+        local char = LocalPlayer.Character
+        local bp = LocalPlayer:FindFirstChild("Backpack")
+        if not char then return end
+        
+        local rod = nil
+        -- Tìm Rod trên tay
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name:lower():match("rod$") then
+                rod = tool
+                break
+            end
+        end
+        -- Tìm Rod trong Balo
+        if not rod and bp then
+            for _, tool in ipairs(bp:GetChildren()) do
+                if tool:IsA("Tool") and tool.Name:lower():match("rod$") then
+                    rod = tool
+                    break
+                end
+            end
+        end
+        
+        if rod then
+            -- Equip cần câu, cất các vũ khí khác
+            if rod.Parent ~= char then
+                for _, t in ipairs(char:GetChildren()) do
+                    if t:IsA("Tool") then t.Parent = bp end
+                end
+                rod.Parent = char
+            end
+            
+            -- Kiểm tra xem đã thả câu chưa (Check Constraint kết nối với TipAttachment)
+            local isCast = false
+            local tip = rod:FindFirstChild("Tip")
+            if tip then
+                local att = tip:FindFirstChild("TipAttachment") or tip:FindFirstChildWhichIsA("Attachment")
+                if att then
+                    -- Kiểm tra xem có RopeConstraint/Beam nào nối vào Attachment này ở ngoài map ko
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint") then
+                            if obj.Attachment0 == att or obj.Attachment1 == att then
+                                isCast = true
+                                break
+                            end
+                        end
+                    end
+                    -- Hoặc nằm thẳng trong cần câu
+                    if not isCast then
+                        for _, obj in ipairs(rod:GetDescendants()) do
+                            if obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint") then
+                                if obj.Attachment0 == att or obj.Attachment1 == att then
+                                    isCast = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+                -- Fallback check nếu game dùng cơ chế đơn giản là đẻ ra Bobber trong Tip
+                if not isCast then
+                    for _, c in ipairs(tip:GetChildren()) do
+                        if c.Name:lower():match("bobber") or c:IsA("RopeConstraint") or c:IsA("Beam") then
+                            isCast = true
+                            break
+                        end
+                    end
+                end
+            end
+            
+            -- Nếu chưa thả câu, kích hoạt và đợi
+            if not isCast then
+                if tick() - lastFishingCast > 3 then
+                    lastFishingCast = tick()
+                    -- Gọi Activate()
+                    rod:Activate()
+                    -- Bấm ảo vào mặt nước ở giữa màn hình để an toàn 
+                    pcall(function()
+                        local center = Camera.ViewportSize / 2
+                        VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, true, game, 0)
+                        task.wait(0.05)
+                        VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, false, game, 0)
+                    end)
+                end
+            end
+        end
+    end
+end)
 
 -- [ XÂY DỰNG TAB: PLAYER ]
 CreateToggle(PlayerTab, "Bật WalkSpeed", "WalkSpeedEnabled")
@@ -907,7 +1003,6 @@ local function FindMobInWorkspace(name, requireAlive)
             end
         end
     end
-    -- Quét fallback Workspace ngoài cùng
     for _, obj in pairs(Workspace:GetChildren()) do
         if obj:IsA("Model") and obj.Name == name then
             if requireAlive and not IsAlive(obj) then continue end
@@ -977,7 +1072,7 @@ local function TeleportTo(targetCFrame)
     end
 end
 
--- V5 CẬP NHẬT: Tối Ưu Hóa Trang Bị Vũ Khí Ngay Lập Tức
+-- Tối Ưu Hóa Trang Bị Vũ Khí Ngay Lập Tức
 local function EquipWeaponsFast()
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
@@ -991,27 +1086,20 @@ local function EquipWeaponsFast()
     end
 end
 
--- V5 CẬP NHẬT: Fast Attack Siêu Tốc (Ép Click 15 lần/frame)
+-- [ V6 CẬP NHẬT ]: Sửa FastAttack (Giảm lần kích hoạt, bỏ click màn hình ảo)
 SafeConnect(RunService.RenderStepped, function()
     if not LocalPlayer.Character then return end
     
     if Config.FastAttack or Config.AutoAttack then
         EquipWeaponsFast() 
         
-        if activelyFarming then
-            pcall(function()
-                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-            end)
-        end
-        
-        -- Dùng Activate thẳng vào Tool để tăng tốc độ chém lên tối đa
         local tools = LocalPlayer.Character:GetChildren()
         for i = 1, #tools do
             local tool = tools[i]
             if tool:IsA("Tool") then
                 if Config.FastAttack then
-                    for j = 1, 15 do tool:Activate() end -- V5: Tăng lên 15 lần một frame để có tốc độ điên rồ
+                    -- V6: Giảm xuống 3 lần/frame để tránh game khóa đòn đánh vì quá tải
+                    for j = 1, 3 do tool:Activate() end 
                 else
                     tool:Activate()
                 end
@@ -1204,4 +1292,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("Rise Piece Superior Auto Farm V5 Loaded successfully! (Fruit Scanner, NPC Teleport, Optimized FastAttack, Boss Fixes)")
+print("Rise Piece Superior Auto Farm V6 Loaded successfully! (Fishing Added, FastAttack Fixed, NPC Teleport Fixed)")
