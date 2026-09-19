@@ -1,9 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V6]
+-- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V7]
 -- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [V6 UPDATE]: Fix lỗi Teleport NPC (Quét chuẩn Workspace.Map.NPC).
--- Fix FastAttack (Giảm tốc độ chống lỗi click loạn xạ).
--- Thêm Tab Fishing (Auto Câu cá thông minh, nhận diện TipAttachment).
+-- [V7 UPDATE]: Thêm Tab Egg (Quét Workspace.EggSpawns).
+-- Thêm ESP Trứng nhìn xuyên tường (Tối ưu chống lag).
+-- Lọc Trứng theo Tên/Độ hiếm (Mythic, Divine, Epic...) & Auto Teleport.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -38,9 +38,12 @@ local Config = {
     AutoFarm = false,
     AutoBoss = false,
     FarmAllBosses = false, 
+    AutoEgg = false, -- V7 Auto Egg
+    EggESP = false, -- V7 ESP
+    SelectedEggRarity = "Tất cả", -- V7 Lọc trứng
     AutoAttack = false,
     FastAttack = false,
-    AutoFishing = false, -- V6 Auto Câu cá
+    AutoFishing = false, 
     AutoSkillZ = false,
     AutoSkillX = false,
     AutoSkillC = false,
@@ -76,7 +79,7 @@ local currentTween = nil
 local activelyFarming = false 
 
 -- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN ]
-local UI_NAME = "RisePiece_PremiumUI_V6"
+local UI_NAME = "RisePiece_PremiumUI_V7"
 local targetParent = nil
 pcall(function()
     if get_hidden_gui or gethui then
@@ -92,7 +95,7 @@ if not targetParent then
 end
 
 if not targetParent then 
-    warn("[V6] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
+    warn("[V7] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
     return
 end
 
@@ -198,7 +201,7 @@ PanelPadding.PaddingTop = UDim.new(0, 10)
 local MenuTitle = Instance.new("TextLabel")
 MenuTitle.Size = UDim2.new(1, 0, 0, 30)
 MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH [V6]"
+MenuTitle.Text = "TIỆN ÍCH [V7]"
 MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
 MenuTitle.Font = Enum.Font.GothamBold
 MenuTitle.TextSize = 15
@@ -257,11 +260,13 @@ local function CreateTabButton(name)
     return content
 end
 
+-- V7: Khởi tạo tất cả các Tab
 local MainTab = CreateTabButton("Main")
 local BossTab = CreateTabButton("Boss")
+local EggTab = CreateTabButton("Egg") -- V7 Tab Trứng Mới
 local FruitTab = CreateTabButton("Fruit") 
 local TeleportTab = CreateTabButton("Teleport") 
-local FishingTab = CreateTabButton("Fishing") -- V6 Tab
+local FishingTab = CreateTabButton("Fishing")
 local PlayerTab = CreateTabButton("Player") 
 local SettingTab = CreateTabButton("Setting")
 
@@ -444,6 +449,14 @@ local function CreateDropdown(parent, titleText)
     return scrollFrame, layout
 end
 
+-- Hàm Teleport Cơ Bản Chung Toàn Cục
+local function TeleportToPos(pos)
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        char.HumanoidRootPart.CFrame = CFrame.new(pos)
+    end
+end
+
 -- [ TỐI ƯU HÓA: HỆ THỐNG LẤY THƯ MỤC QUÁI ]
 local function GetMobFolders()
     local folders = {}
@@ -462,7 +475,6 @@ local function GetMobFolders()
     return folders
 end
 
--- [ LOGIC NHẬN DIỆN MỤC TIÊU ]
 local function IsAlive(mob)
     return mob and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 and mob:FindFirstChild("HumanoidRootPart")
 end
@@ -472,7 +484,6 @@ local function GetMobLevel(mobName)
     return level and tonumber(level) or 1
 end
 
--- Quét Chung Nhận Diện Boss & Quái
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
@@ -489,7 +500,7 @@ local function ScanObj(obj)
     end
 end
 
--- [ XÂY DỰNG TAB: MAIN & BOSS (Sử dụng Dropdown) ]
+-- [ XÂY DỰNG TAB: MAIN & BOSS ]
 local MobListContainer, MobListLayout = CreateDropdown(MainTab, "Danh sách Quái Bản Đồ")
 local BossListContainer, BossListLayout = CreateDropdown(BossTab, "Danh sách Boss Bản Đồ")
 
@@ -587,6 +598,156 @@ CreateToggle(BossTab, "Farm Tất Cả Boss (Lùng Sục)", "FarmAllBosses")
 CreateSlider(BossTab, "Thời gian chờ Boss (s)", 0.1, 60, 0.5, "BossWaitTime", true)
 
 -- =========================================================
+-- [ V7 MỚI: TAB EGG (TRỨNG) - ESP VÀ AUTO TELEPORT ]
+-- =========================================================
+local function GetEggs()
+    local eggs = {}
+    local eggFolder = Workspace:FindFirstChild("EggSpawns") or Workspace:FindFirstChild("Eggs")
+    if eggFolder then
+        for _, obj in ipairs(eggFolder:GetChildren()) do
+            if obj:IsA("Model") or obj:IsA("BasePart") then
+                table.insert(eggs, obj)
+            end
+        end
+    else
+        -- Quét fallback Workspace nếu không có thư mục chuyên dụng
+        for _, obj in ipairs(Workspace:GetChildren()) do
+            if (obj:IsA("Model") or obj:IsA("BasePart")) and obj.Name:lower():match("egg") then
+                table.insert(eggs, obj)
+            end
+        end
+    end
+    return eggs
+end
+
+CreateToggle(EggTab, "Bật ESP Trứng (Xuyên tường)", "EggESP")
+CreateToggle(EggTab, "Auto Teleport Tới Trứng (Khi xuất hiện)", "AutoEgg")
+
+local EggRarityList = {"Tất cả", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Divine"}
+CreateButton(EggTab, "Lọc Trứng: " .. Config.SelectedEggRarity, function(btn)
+    local currentIndex = table.find(EggRarityList, Config.SelectedEggRarity) or 1
+    currentIndex = currentIndex + 1
+    if currentIndex > #EggRarityList then currentIndex = 1 end
+    Config.SelectedEggRarity = EggRarityList[currentIndex]
+    btn.Text = "Lọc Trứng: " .. Config.SelectedEggRarity
+end)
+
+local EggScrollFrame, EggLayout = CreateDropdown(EggTab, "Danh Sách Trứng Đang Có")
+
+local function ScanEggsAndUpdateUI()
+    for _, child in pairs(EggScrollFrame:GetChildren()) do
+        if child:IsA("Frame") then child:Destroy() end
+    end
+    
+    local eggs = GetEggs()
+    
+    if #eggs == 0 then
+        local msg = Instance.new("TextLabel")
+        msg.Size = UDim2.new(1, 0, 0, 30)
+        msg.BackgroundTransparency = 1
+        msg.Text = "Không tìm thấy Trứng nào trong map."
+        msg.TextColor3 = Color3.fromRGB(200, 100, 100)
+        msg.Font = Enum.Font.Gotham
+        msg.TextSize = 13
+        msg.Parent = EggScrollFrame
+    else
+        for _, egg in ipairs(eggs) do
+            local part = egg:IsA("Model") and (egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")) or egg
+            if not part then continue end
+            
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Size = UDim2.new(1, 0, 0, 45)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+            itemFrame.Parent = EggScrollFrame
+            Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 6)
+            
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
+            nameLabel.Position = UDim2.new(0, 10, 0, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = "Trứng: " .. egg.Name
+            nameLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
+            nameLabel.Font = Enum.Font.GothamSemibold
+            nameLabel.TextSize = 13
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.Parent = itemFrame
+            
+            local teleBtn = Instance.new("TextButton")
+            teleBtn.Size = UDim2.new(0, 60, 0, 30)
+            teleBtn.Position = UDim2.new(1, -70, 0.5, -15)
+            teleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
+            teleBtn.Text = "Tele"
+            teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            teleBtn.Font = Enum.Font.GothamBold
+            teleBtn.Parent = itemFrame
+            Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
+            
+            teleBtn.MouseButton1Click:Connect(function()
+                TeleportToPos(part.Position)
+            end)
+        end
+    end
+    EggScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EggLayout.AbsoluteContentSize.Y)
+end
+CreateButton(EggTab, "Quét Danh Sách Trứng", ScanEggsAndUpdateUI)
+
+-- [ HỆ THỐNG ESP TRỨNG TỐI ƯU HÓA (V7) ]
+local EspFolder = Instance.new("Folder")
+EspFolder.Name = "RisePiece_EggESP"
+EspFolder.Parent = targetParent
+
+local espCache = {}
+SafeConnect(RunService.Heartbeat, function()
+    if Config.EggESP then
+        local eggs = GetEggs()
+        local currentEggs = {}
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        
+        for _, egg in ipairs(eggs) do
+            currentEggs[egg] = true
+            local part = egg:IsA("Model") and (egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")) or egg
+            if part and hrp then
+                local dist = (hrp.Position - part.Position).Magnitude
+                
+                if not espCache[egg] then
+                    local bb = Instance.new("BillboardGui")
+                    bb.Size = UDim2.new(0, 150, 0, 40)
+                    bb.AlwaysOnTop = true
+                    bb.Adornee = part
+                    
+                    local txt = Instance.new("TextLabel")
+                    txt.Size = UDim2.new(1, 0, 1, 0)
+                    txt.BackgroundTransparency = 1
+                    txt.TextColor3 = Color3.fromRGB(255, 200, 50)
+                    txt.TextStrokeTransparency = 0
+                    txt.Font = Enum.Font.GothamBold
+                    txt.TextSize = 12
+                    txt.Parent = bb
+                    
+                    bb.Parent = EspFolder
+                    espCache[egg] = {Gui = bb, Text = txt}
+                end
+                espCache[egg].Text.Text = string.format("%s [%d m]", egg.Name, math.floor(dist))
+            end
+        end
+        
+        -- Dọn dẹp ESP của Trứng đã biến mất
+        for egg, cache in pairs(espCache) do
+            if not currentEggs[egg] or not egg.Parent then
+                cache.Gui:Destroy()
+                espCache[egg] = nil
+            end
+        end
+    else
+        -- Nếu tắt ESP, xóa sạch cache
+        for egg, cache in pairs(espCache) do
+            cache.Gui:Destroy()
+        end
+        table.clear(espCache)
+    end
+end)
+
+-- =========================================================
 -- [ TAB FRUIT (TRÁI ÁC QUỶ) ]
 -- =========================================================
 local FruitScrollFrame = Instance.new("ScrollingFrame")
@@ -599,13 +760,6 @@ local FruitLayout = Instance.new("UIListLayout")
 FruitLayout.SortOrder = Enum.SortOrder.LayoutOrder
 FruitLayout.Padding = UDim.new(0, 5)
 FruitLayout.Parent = FruitScrollFrame
-
-local function TeleportToPos(pos)
-    local char = LocalPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        char.HumanoidRootPart.CFrame = CFrame.new(pos)
-    end
-end
 
 local function ScanFruitsAndUpdateUI()
     for _, child in pairs(FruitScrollFrame:GetChildren()) do
@@ -670,7 +824,7 @@ end
 CreateButton(FruitTab, "Quét Tìm Trái Ác Quỷ", ScanFruitsAndUpdateUI)
 
 -- =========================================================
--- [ V6 CẬP NHẬT: TAB TELEPORT (NPC) QUÉT CHUẨN XÁC ]
+-- [ TAB TELEPORT (NPC) ]
 -- =========================================================
 local NpcScrollFrame = Instance.new("ScrollingFrame")
 NpcScrollFrame.Size = UDim2.new(1, 0, 0, 200)
@@ -691,7 +845,6 @@ local function ScanNPCsAndUpdateUI()
     local foundNPCs = {}
     local npcFolders = {}
     
-    -- V6: Quét tìm các thư mục có tên map/mapa và NPC
     for _, child in ipairs(Workspace:GetChildren()) do
         local name = child.Name:lower()
         if name == "map" or name == "mapa" then
@@ -716,7 +869,6 @@ local function ScanNPCsAndUpdateUI()
             for _, obj in ipairs(folder:GetChildren()) do addNpc(obj) end
         end
     else
-        -- Fallback:
         for _, obj in ipairs(Workspace:GetChildren()) do
             if obj:IsA("Model") and obj.Name:lower():match("npc") then addNpc(obj) end
         end
@@ -759,7 +911,7 @@ end
 CreateButton(TeleportTab, "Quét Danh Sách NPC", ScanNPCsAndUpdateUI)
 
 -- =========================================================
--- [ V6 MỚI: TAB FISHING (CÂU CÁ TỰ ĐỘNG) ]
+-- [ TAB FISHING (CÂU CÁ TỰ ĐỘNG) ]
 -- =========================================================
 CreateToggle(FishingTab, "Bật/Tắt Auto Câu Cá", "AutoFishing")
 
@@ -771,14 +923,12 @@ SafeConnect(RunService.Heartbeat, function()
         if not char then return end
         
         local rod = nil
-        -- Tìm Rod trên tay
         for _, tool in ipairs(char:GetChildren()) do
             if tool:IsA("Tool") and tool.Name:lower():match("rod$") then
                 rod = tool
                 break
             end
         end
-        -- Tìm Rod trong Balo
         if not rod and bp then
             for _, tool in ipairs(bp:GetChildren()) do
                 if tool:IsA("Tool") and tool.Name:lower():match("rod$") then
@@ -789,7 +939,6 @@ SafeConnect(RunService.Heartbeat, function()
         end
         
         if rod then
-            -- Equip cần câu, cất các vũ khí khác
             if rod.Parent ~= char then
                 for _, t in ipairs(char:GetChildren()) do
                     if t:IsA("Tool") then t.Parent = bp end
@@ -797,13 +946,11 @@ SafeConnect(RunService.Heartbeat, function()
                 rod.Parent = char
             end
             
-            -- Kiểm tra xem đã thả câu chưa (Check Constraint kết nối với TipAttachment)
             local isCast = false
             local tip = rod:FindFirstChild("Tip")
             if tip then
                 local att = tip:FindFirstChild("TipAttachment") or tip:FindFirstChildWhichIsA("Attachment")
                 if att then
-                    -- Kiểm tra xem có RopeConstraint/Beam nào nối vào Attachment này ở ngoài map ko
                     for _, obj in ipairs(workspace:GetDescendants()) do
                         if obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint") then
                             if obj.Attachment0 == att or obj.Attachment1 == att then
@@ -812,7 +959,6 @@ SafeConnect(RunService.Heartbeat, function()
                             end
                         end
                     end
-                    -- Hoặc nằm thẳng trong cần câu
                     if not isCast then
                         for _, obj in ipairs(rod:GetDescendants()) do
                             if obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint") then
@@ -824,7 +970,6 @@ SafeConnect(RunService.Heartbeat, function()
                         end
                     end
                 end
-                -- Fallback check nếu game dùng cơ chế đơn giản là đẻ ra Bobber trong Tip
                 if not isCast then
                     for _, c in ipairs(tip:GetChildren()) do
                         if c.Name:lower():match("bobber") or c:IsA("RopeConstraint") or c:IsA("Beam") then
@@ -835,13 +980,10 @@ SafeConnect(RunService.Heartbeat, function()
                 end
             end
             
-            -- Nếu chưa thả câu, kích hoạt và đợi
             if not isCast then
                 if tick() - lastFishingCast > 3 then
                     lastFishingCast = tick()
-                    -- Gọi Activate()
                     rod:Activate()
-                    -- Bấm ảo vào mặt nước ở giữa màn hình để an toàn 
                     pcall(function()
                         local center = Camera.ViewportSize / 2
                         VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, true, game, 0)
@@ -1072,7 +1214,6 @@ local function TeleportTo(targetCFrame)
     end
 end
 
--- Tối Ưu Hóa Trang Bị Vũ Khí Ngay Lập Tức
 local function EquipWeaponsFast()
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
@@ -1086,7 +1227,6 @@ local function EquipWeaponsFast()
     end
 end
 
--- [ V6 CẬP NHẬT ]: Sửa FastAttack (Giảm lần kích hoạt, bỏ click màn hình ảo)
 SafeConnect(RunService.RenderStepped, function()
     if not LocalPlayer.Character then return end
     
@@ -1098,7 +1238,6 @@ SafeConnect(RunService.RenderStepped, function()
             local tool = tools[i]
             if tool:IsA("Tool") then
                 if Config.FastAttack then
-                    -- V6: Giảm xuống 3 lần/frame để tránh game khóa đòn đánh vì quá tải
                     for j = 1, 3 do tool:Activate() end 
                 else
                     tool:Activate()
@@ -1108,7 +1247,6 @@ SafeConnect(RunService.RenderStepped, function()
     end
 end)
 
--- Vòng lặp bắn SKILL an toàn
 local lastSkillTime = tick()
 SafeConnect(RunService.Heartbeat, function()
     if tick() - lastSkillTime > 0.5 then
@@ -1123,7 +1261,7 @@ SafeConnect(RunService.Heartbeat, function()
     end
 end)
 
--- [ VÒNG LẶP DI CHUYỂN AUTO FARM ]
+-- [ VÒNG LẶP DI CHUYỂN CHÍNH ]
 SafeConnect(RunService.Heartbeat, function()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then activelyFarming = false; return end
@@ -1157,6 +1295,28 @@ SafeConnect(RunService.Heartbeat, function()
         local targetPos = GetOffsetCFrame(bossToFight.HumanoidRootPart.CFrame)
         TeleportTo(targetPos)
         return
+    end
+    
+    -- V7 AUTO TELEPORT EGG
+    if Config.AutoEgg then
+        local eggs = GetEggs()
+        local targetEgg = nil
+        for _, egg in ipairs(eggs) do
+            if Config.SelectedEggRarity == "Tất cả" or string.match(egg.Name:lower(), Config.SelectedEggRarity:lower()) then
+                targetEgg = egg
+                break
+            end
+        end
+        if targetEgg then
+            local part = targetEgg:IsA("Model") and (targetEgg.PrimaryPart or targetEgg:FindFirstChildWhichIsA("BasePart")) or targetEgg
+            if part then
+                activelyFarming = true
+                if humanoid then humanoid:ChangeState(11) end
+                -- Bay thẳng đến ngay sát trên đỉnh trứng
+                TeleportTo(part.CFrame * CFrame.new(0, 3, 0))
+                return
+            end
+        end
     end
 
     if Config.AutoFarm then
@@ -1292,4 +1452,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("Rise Piece Superior Auto Farm V6 Loaded successfully! (Fishing Added, FastAttack Fixed, NPC Teleport Fixed)")
+print("Rise Piece Superior Auto Farm V7 Loaded successfully! (Egg Scanner, Egg ESP, Filtered Auto Egg Teleport Added)")
