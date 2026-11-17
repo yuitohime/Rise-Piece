@@ -1,8 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [FULL SOURCE UNTOUCHED]
--- Giao diện thu gọn Mobile (600x380). Giữ nguyên 100% cấu trúc dài gốc.
--- Tuyệt đối không gộp dòng, không cắt xén. Hiệu năng mượt mà tuyệt đối.
--- Đã thêm: ESP Trái Ác Quỷ, Teleport Đảo, Fix Quét Boss/NPC, Dropdown Menu.
+-- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V11]
+-- Giao diện thu gọn Mobile (600x380). Bổ sung Ghim & Thu Nhỏ.
+-- Sửa lỗi cất vũ khí, Auto Skill siêu mượt, Quét Boss nâng cao.
+-- Thêm tính năng Auto Đổi Vũ Khí & Đổi Vị Trí Farm theo thời gian.
+-- TUYỆT ĐỐI KHÔNG CẮT XÉN, KHÔNG GỘP DÒNG, CHUẨN MÃ NGUỒN FULL.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -38,7 +39,7 @@ local function DisconnectAll()
     table.clear(RuntimeConnections)
 end
 
--- [ CẤU HÌNH BIẾN TOÀN CỤC BẢN GỐC KẾT HỢP BẢN MỚI ]
+-- [ CẤU HÌNH BIẾN TOÀN CỤC ]
 local Config = {
     AutoFarm = false,
     AutoBoss = false,
@@ -68,7 +69,13 @@ local Config = {
     TweenDuration = 0.5,
     BossWaitTime = 0.5, 
     
+    -- Auto Swap Logic
+    AutoSwapWeapons = false,
+    AutoSwapPositions = false,
+    SwapInterval = 5,
+    
     SelectedWeapons = {}, 
+    SelectedPositions = {["Trên đầu"] = true},
     SelectedMobs = {}, 
     SelectedBosses = {},
     MobListCache = {}, 
@@ -101,7 +108,7 @@ local activelyFarming = false
 -- =====================================================================
 -- [ UI LIBRARY: YUIHUB MOBILE OPTIMIZED (MARU STYLE) ]
 -- =====================================================================
-local UI_NAME = "YuiHuB_Mobile_FullSource"
+local UI_NAME = "YuiHuB_Mobile_V11"
 local targetParent = nil
 
 pcall(function()
@@ -126,7 +133,7 @@ ScreenGui.Name = UI_NAME
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = targetParent
 
--- Nút Mở/Đóng (Toggle)
+-- Nút Mở/Đóng (Toggle Logo)
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Size = UDim2.new(0, 45, 0, 45)
 ToggleButton.Position = UDim2.new(0, 10, 0.5, -22)
@@ -224,7 +231,7 @@ TopbarDivider.BorderSizePixel = 0
 TopbarDivider.Parent = Topbar
 
 local CurrentTabTitle = Instance.new("TextLabel")
-CurrentTabTitle.Size = UDim2.new(1, -20, 1, 0)
+CurrentTabTitle.Size = UDim2.new(1, -100, 1, 0)
 CurrentTabTitle.Position = UDim2.new(0, 15, 0, 0)
 CurrentTabTitle.BackgroundTransparency = 1
 CurrentTabTitle.Text = "Overview"
@@ -234,9 +241,10 @@ CurrentTabTitle.TextSize = 16
 CurrentTabTitle.TextXAlignment = Enum.TextXAlignment.Left
 CurrentTabTitle.Parent = Topbar
 
+-- NÚT ĐÓNG (X)
 local CloseMenuBtn = Instance.new("TextButton")
 CloseMenuBtn.Size = UDim2.new(0, 25, 0, 25)
-CloseMenuBtn.Position = UDim2.new(1, -35, 0, 7)
+CloseMenuBtn.Position = UDim2.new(1, -30, 0, 7)
 CloseMenuBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 CloseMenuBtn.Text = "X"
 CloseMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -250,6 +258,65 @@ CloseCorner.Parent = CloseMenuBtn
 CloseMenuBtn.MouseButton1Click:Connect(function()
     ScreenGui:Destroy()
     DisconnectAll()
+end)
+
+-- NÚT THU NHỎ (-)
+local isMinimized = false
+local MinMenuBtn = Instance.new("TextButton")
+MinMenuBtn.Size = UDim2.new(0, 25, 0, 25)
+MinMenuBtn.Position = UDim2.new(1, -60, 0, 7)
+MinMenuBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 50)
+MinMenuBtn.Text = "-"
+MinMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinMenuBtn.Font = Enum.Font.GothamBold
+MinMenuBtn.Parent = Topbar
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 4)
+MinCorner.Parent = MinMenuBtn
+
+MinMenuBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        MainFrame.Size = UDim2.new(0, 600, 0, 40)
+        Sidebar.Visible = false
+        ContentArea.BackgroundTransparency = 1
+        for _, child in pairs(ContentArea:GetChildren()) do
+            if child ~= Topbar then child.Visible = false end
+        end
+    else
+        MainFrame.Size = UDim2.new(0, 600, 0, 380)
+        Sidebar.Visible = true
+        ContentArea.BackgroundTransparency = 1
+        for _, child in pairs(ContentArea:GetChildren()) do
+            if child ~= Topbar then child.Visible = true end
+        end
+    end
+end)
+
+-- NÚT GHIM (PIN)
+local isPinned = false
+local PinMenuBtn = Instance.new("TextButton")
+PinMenuBtn.Size = UDim2.new(0, 25, 0, 25)
+PinMenuBtn.Position = UDim2.new(1, -90, 0, 7)
+PinMenuBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+PinMenuBtn.Text = "📌"
+PinMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PinMenuBtn.Font = Enum.Font.GothamBold
+PinMenuBtn.Parent = Topbar
+
+local PinCorner = Instance.new("UICorner")
+PinCorner.CornerRadius = UDim.new(0, 4)
+PinCorner.Parent = PinMenuBtn
+
+PinMenuBtn.MouseButton1Click:Connect(function()
+    isPinned = not isPinned
+    MainFrame.Draggable = not isPinned
+    if isPinned then
+        PinMenuBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+    else
+        PinMenuBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+    end
 end)
 
 local ContentContainer = Instance.new("Frame")
@@ -667,7 +734,7 @@ local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
         
-        -- LỌC BỎ CÁC NPC, SHOP, QUEST ĐỂ KHÔNG BỊ QUÉT VÀO DANH SÁCH QUÁI
+        -- LỌC BỎ CÁC NPC, SHOP, QUEST
         local isNPC = false
         if lowerName:match("npc") or lowerName:match("shop") or lowerName:match("quest") then
             isNPC = true
@@ -685,8 +752,15 @@ local function ScanObj(obj)
             return
         end
         
-        -- Phân tách Boss và Mob rõ ràng
-        if lowerName:match("boss") then
+        -- Phân tách Boss và Mob (Mở rộng cho các loại Boss có máu > 5000)
+        local isBoss = false
+        if lowerName:match("boss") or lowerName:match("king") or lowerName:match("god") then
+            isBoss = true
+        elseif obj.Humanoid.MaxHealth > 5000 then
+            isBoss = true
+        end
+        
+        if isBoss then
             Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
         elseif lowerName:match("monster") or lowerName:match("enemy") or lowerName:match("mob") then
             Config.MobListCache[obj.Name] = true
@@ -705,11 +779,12 @@ local function ScanObj(obj)
 end
 
 -- =====================================================================
--- [ KHỞI TẠO TABS VÀ CÁC THẺ CARD ]
+-- [ KHỞI TẠO TABS VÀ CÁC THẺ CARD (THEO ĐÚNG THỨ TỰ YÊU CẦU) ]
 -- =====================================================================
 CreateCategory("Workspace")
 local OverviewLeft, OverviewRight = CreateTabButton("Overview")
 local FarmLeft, FarmRight = CreateTabButton("Farming")
+local SettingsLeft, SettingsRight = CreateTabButton("Settings") -- Đã chuyển Settings lên ngay dưới Farming
 
 CreateCategory("Combat")
 local BossLeft, BossRight = CreateTabButton("Bosses")
@@ -720,7 +795,7 @@ local ItemLeft, ItemRight = CreateTabButton("Eggs & Fruits")
 
 CreateCategory("Activities")
 local PlayerLeft, PlayerRight = CreateTabButton("Player Mods")
-local SettingsLeft, SettingsRight = CreateTabButton("Settings")
+
 
 -- =========================================================
 -- [ TAB: OVERVIEW ]
@@ -731,7 +806,7 @@ local InfoLbl = Instance.new("TextLabel")
 InfoLbl.Size = UDim2.new(1, -16, 0, 70)
 InfoLbl.Position = UDim2.new(0, 8, 0, 0)
 InfoLbl.BackgroundTransparency = 1
-InfoLbl.Text = "- FULL SOURCE CODE. KHÔNG CẮT XÉN.\n- Tối ưu UI cho Mobile.\n- Đã sửa triệt để lỗi quét nhầm NPC thành Quái.\n- Thêm ESP Trái Ác Quỷ & Teleport Đảo."
+InfoLbl.Text = "- FULL SOURCE CODE. KHÔNG CẮT XÉN.\n- Menu có Ghim & Thu nhỏ.\n- Auto Đổi Vị Trí / Đổi Vũ Khí (Settings).\n- Auto Skill Mượt & Quét Boss Siêu Rộng."
 InfoLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 InfoLbl.Font = Enum.Font.Gotham
 InfoLbl.TextSize = 10
@@ -818,6 +893,153 @@ CreateToggle(SkillContainer, "Auto Skill T", "AutoSkillT")
 CreateToggle(SkillContainer, "Auto Skill J", "AutoSkillJ")
 
 SkillContainer.CanvasSize = UDim2.new(0, 0, 0, 320)
+
+-- =========================================================
+-- [ TAB: SETTINGS (CHUYỂN XUỐNG DƯỚI FARMING) ]
+-- =========================================================
+local SettingCard = CreateCard(SettingsLeft, "Cài Đặt Đánh")
+CreateButton(SettingCard, "Đổi Mode: " .. Config.MovementMode, function(btn)
+    if Config.MovementMode == "Tween" then
+        Config.MovementMode = "Teleport"
+    else
+        Config.MovementMode = "Tween"
+    end
+    btn.Text = "Đổi Mode: " .. Config.MovementMode
+end)
+
+CreateSlider(SettingCard, "Khoảng Cách", 0, 50, 5, "Distance", false)
+CreateSlider(SettingCard, "Tốc Độ Tween", 0.1, 10, 0.5, "TweenDuration", true)
+CreateToggle(SettingCard, "Auto Click", "AutoAttack")
+CreateToggle(SettingCard, "FAST ATTACK", "FastAttack")
+
+-- Tính năng Auto Đổi Vị Trí Đánh
+local AutoPosCard = CreateCard(SettingsLeft, "Kiểu Đánh (Vị Trí)")
+CreateToggle(AutoPosCard, "Bật Auto Đổi Vị Trí", "AutoSwapPositions")
+CreateSlider(AutoPosCard, "Thời gian đổi vị trí (s)", 1, 60, 5, "SwapInterval", false)
+
+local PosContainer, PosLayout, PosWrap = CreateDropdown(AutoPosCard, "Chọn Các Vị Trí: ")
+local PositionsList = {"Trên đầu", "Đằng sau", "Đằng trước", "Dưới chân"}
+
+for _, posName in ipairs(PositionsList) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -4, 0, 22)
+    
+    if Config.SelectedPositions[posName] then
+        btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+    else
+        btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+    end
+    
+    btn.Text = "  " .. posName
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 10
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = PosContainer
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 4)
+    btnCorner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        if Config.SelectedPositions[posName] then
+            Config.SelectedPositions[posName] = nil
+            btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+        else
+            Config.SelectedPositions[posName] = true
+            btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+        end
+        
+        -- Default to a selected one if available
+        for k, v in pairs(Config.SelectedPositions) do
+            if v then
+                Config.FarmPosition = k
+                break
+            end
+        end
+    end)
+end
+PosContainer.CanvasSize = UDim2.new(0, 0, 0, PosLayout.AbsoluteContentSize.Y)
+
+local WeaponCard = CreateCard(SettingsRight, "Quản Lý Vũ Khí")
+CreateToggle(WeaponCard, "Bật Auto Đổi Vũ Khí", "AutoSwapWeapons")
+
+local WeaponListContainer, WeaponListLayout, WeaponWrap = CreateDropdown(WeaponCard, "Chọn Các Vũ Khí")
+
+CreateButton(WeaponCard, "Quét Balo Vũ Khí", function()
+    for _, child in pairs(WeaponListContainer:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    local tools = {}
+    local backpack = LocalPlayer.Backpack
+    
+    if backpack then
+        local bpChildren = backpack:GetChildren()
+        for _, tool in ipairs(bpChildren) do
+            if tool:IsA("Tool") then
+                tools[tool.Name] = tool
+            end
+        end
+    end
+    
+    local char = LocalPlayer.Character
+    if char then
+        local charChildren = char:GetChildren()
+        for _, tool in ipairs(charChildren) do
+            if tool:IsA("Tool") then
+                tools[tool.Name] = tool
+            end
+        end
+    end
+    
+    for toolName, _ in pairs(tools) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -4, 0, 22)
+        
+        if Config.SelectedWeapons[toolName] then
+            btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+        end
+        
+        btn.Text = "  " .. toolName
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 10
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = WeaponListContainer
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        btnCorner.Parent = btn
+        
+        btn.MouseButton1Click:Connect(function()
+            if Config.SelectedWeapons[toolName] then
+                Config.SelectedWeapons[toolName] = nil
+                btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+                
+                -- Xử lý Cất Vũ Khí Ngay Lập Tức Khi Bỏ Chọn
+                local char = LocalPlayer.Character
+                local backpack = LocalPlayer:FindFirstChild("Backpack")
+                if char and backpack then
+                    local toolInHand = char:FindFirstChild(toolName)
+                    if toolInHand then
+                        toolInHand.Parent = backpack
+                    end
+                end
+            else
+                Config.SelectedWeapons[toolName] = true
+                btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+            end
+        end)
+    end
+    
+    WeaponListContainer.CanvasSize = UDim2.new(0, 0, 0, WeaponListLayout.AbsoluteContentSize.Y)
+end)
+
 
 -- =========================================================
 -- [ TAB: BOSSES ]
@@ -1286,132 +1508,6 @@ CreateSlider(MoveCard, "Tốc Độ Bay", 16, 500, 50, "FlySpeed", false)
 local FishCard = CreateCard(PlayerRight, "Câu Cá Tự Động")
 CreateToggle(FishCard, "Bật Auto Câu Cá", "AutoFishing")
 
-local SettingCard = CreateCard(SettingsLeft, "Cài Đặt Đánh")
-CreateButton(SettingCard, "Đổi Mode: " .. Config.MovementMode, function(btn)
-    if Config.MovementMode == "Tween" then
-        Config.MovementMode = "Teleport"
-    else
-        Config.MovementMode = "Tween"
-    end
-    btn.Text = "Đổi Mode: " .. Config.MovementMode
-end)
-
-CreateSlider(SettingCard, "Khoảng Cách", 0, 50, 5, "Distance", false)
-CreateSlider(SettingCard, "Tốc Độ Tween", 0.1, 10, 0.5, "TweenDuration", true)
-CreateToggle(SettingCard, "Auto Click", "AutoAttack")
-CreateToggle(SettingCard, "FAST ATTACK", "FastAttack")
-
-local PosContainer, PosLayout, PosWrap = CreateDropdown(SettingCard, "Vị Trí: " .. Config.FarmPosition)
-local PositionsList = {"Trên đầu", "Đằng sau", "Đằng trước", "Dưới chân"}
-
-for _, posName in ipairs(PositionsList) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -4, 0, 22)
-    
-    if Config.FarmPosition == posName then
-        btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-    else
-        btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
-    end
-    
-    btn.Text = "  " .. posName
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 10
-    btn.TextXAlignment = Enum.TextXAlignment.Left
-    btn.Parent = PosContainer
-    
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 4)
-    btnCorner.Parent = btn
-    
-    btn.MouseButton1Click:Connect(function()
-        Config.FarmPosition = posName
-        
-        local toggleBtn = PosWrap:FindFirstChildWhichIsA("TextButton")
-        if toggleBtn then
-            toggleBtn.Text = "  Vị Trí: " .. posName .. "  ▼"
-        end
-        
-        for _, b in pairs(PosContainer:GetChildren()) do
-            if b:IsA("TextButton") then
-                if b.Text:match(posName) then
-                    b.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-                else
-                    b.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
-                end
-            end
-        end
-    end)
-end
-PosContainer.CanvasSize = UDim2.new(0, 0, 0, PosLayout.AbsoluteContentSize.Y)
-
-local WeaponCard = CreateCard(SettingsRight, "Quản Lý Vũ Khí")
-local WeaponListContainer, WeaponListLayout, WeaponWrap = CreateDropdown(WeaponCard, "Vũ Khí Farm")
-
-CreateButton(WeaponCard, "Quét Balo Vũ Khí", function()
-    for _, child in pairs(WeaponListContainer:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
-        end
-    end
-    
-    local tools = {}
-    local backpack = LocalPlayer.Backpack
-    
-    if backpack then
-        local bpChildren = backpack:GetChildren()
-        for _, tool in ipairs(bpChildren) do
-            if tool:IsA("Tool") then
-                tools[tool.Name] = tool
-            end
-        end
-    end
-    
-    local char = LocalPlayer.Character
-    if char then
-        local charChildren = char:GetChildren()
-        for _, tool in ipairs(charChildren) do
-            if tool:IsA("Tool") then
-                tools[tool.Name] = tool
-            end
-        end
-    end
-    
-    for toolName, _ in pairs(tools) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, -4, 0, 22)
-        
-        if Config.SelectedWeapons[toolName] then
-            btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
-        end
-        
-        btn.Text = "  " .. toolName
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 10
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.Parent = WeaponListContainer
-        
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 4)
-        btnCorner.Parent = btn
-        
-        btn.MouseButton1Click:Connect(function()
-            if Config.SelectedWeapons[toolName] then
-                Config.SelectedWeapons[toolName] = nil
-                btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
-            else
-                Config.SelectedWeapons[toolName] = true
-                btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-            end
-        end)
-    end
-    
-    WeaponListContainer.CanvasSize = UDim2.new(0, 0, 0, WeaponListLayout.AbsoluteContentSize.Y)
-end)
 
 SwitchTab("Overview")
 
@@ -1424,6 +1520,70 @@ ToggleButton.MouseButton1Click:Connect(function()
         MainFrame.Visible = false
     end
 end)
+
+-- =========================================================
+-- [ AUTO SWAP WEAPONS & POSITIONS THREAD ]
+-- =========================================================
+local lastSwapTime = tick()
+local currentWeaponIndex = 1
+local currentPosIndex = 1
+
+SafeConnect(RunService.Heartbeat, function()
+    local currentTime = tick()
+    if currentTime - lastSwapTime >= Config.SwapInterval then
+        lastSwapTime = currentTime
+        
+        -- Đổi Vị Trí
+        if Config.AutoSwapPositions then
+            local posList = {}
+            for name, isSelected in pairs(Config.SelectedPositions) do
+                if isSelected then
+                    table.insert(posList, name)
+                end
+            end
+            
+            if #posList > 0 then
+                currentPosIndex = currentPosIndex + 1
+                if currentPosIndex > #posList then currentPosIndex = 1 end
+                Config.FarmPosition = posList[currentPosIndex]
+            end
+        end
+        
+        -- Đổi Vũ Khí
+        if Config.AutoSwapWeapons then
+            local wepList = {}
+            for name, isSelected in pairs(Config.SelectedWeapons) do
+                if isSelected then
+                    table.insert(wepList, name)
+                end
+            end
+            
+            if #wepList > 0 then
+                currentWeaponIndex = currentWeaponIndex + 1
+                if currentWeaponIndex > #wepList then currentWeaponIndex = 1 end
+                
+                local nextWeapon = wepList[currentWeaponIndex]
+                local char = LocalPlayer.Character
+                local backpack = LocalPlayer:FindFirstChild("Backpack")
+                
+                if char and backpack then
+                    -- Cất hết vũ khí khác
+                    for _, tool in ipairs(char:GetChildren()) do
+                        if tool:IsA("Tool") and tool.Name ~= nextWeapon then
+                            tool.Parent = backpack
+                        end
+                    end
+                    -- Lấy vũ khí tiếp theo
+                    local newTool = backpack:FindFirstChild(nextWeapon)
+                    if newTool then
+                        newTool.Parent = char
+                    end
+                end
+            end
+        end
+    end
+end)
+
 
 -- =========================================================
 -- [ CORE FARMING LOGIC (MƯỢT MÀ KHÔNG GIẬT) ]
@@ -1541,7 +1701,10 @@ local function TeleportTo(targetCFrame)
     end
 end
 
+-- Fixed: Chỉ Equip khi AutoSwapWeapons Tắt (Tránh đụng độ vòng lặp Đổi Vũ Khí)
 local function EquipWeaponsFast()
+    if Config.AutoSwapWeapons then return end
+    
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
     
@@ -1549,10 +1712,20 @@ local function EquipWeaponsFast()
         return
     end
     
-    for toolName, _ in pairs(Config.SelectedWeapons) do
-        local toolInBp = backpack:FindFirstChild(toolName)
-        if toolInBp then
-            toolInBp.Parent = char
+    -- Cất các vũ khí không được chọn
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and not Config.SelectedWeapons[tool.Name] then
+            tool.Parent = backpack
+        end
+    end
+    
+    -- Lấy vũ khí đã chọn
+    for toolName, isSelected in pairs(Config.SelectedWeapons) do
+        if isSelected then
+            local toolInBp = backpack:FindFirstChild(toolName)
+            if toolInBp then
+                toolInBp.Parent = char
+            end
         end
     end
 end
@@ -1581,12 +1754,13 @@ SafeConnect(RunService.RenderStepped, function()
     end
 end)
 
-local lastSkillTime = tick()
+-- AUTO SKILL SIÊU MƯỢT (FIXED TỐC ĐỘ VÀ HOLD KEY)
+local lastSkillTrigger = tick()
 SafeConnect(RunService.Heartbeat, function()
     local currentTime = tick()
     
-    if currentTime - lastSkillTime > 0.5 then
-        lastSkillTime = currentTime
+    if currentTime - lastSkillTrigger > 0.2 then
+        lastSkillTrigger = currentTime
         
         if activelyFarming and (Config.AutoFarm or Config.AutoBoss) then
             local keys = {}
@@ -1603,8 +1777,11 @@ SafeConnect(RunService.Heartbeat, function()
             if Config.AutoSkillJ then table.insert(keys, Enum.KeyCode.J) end
             
             for _, key in ipairs(keys) do
-                VirtualInputManager:SendKeyEvent(true, key, false, game)
-                VirtualInputManager:SendKeyEvent(false, key, false, game)
+                task.spawn(function()
+                    VirtualInputManager:SendKeyEvent(true, key, false, game)
+                    task.wait(0.05) -- Giữ phím một tí để game nhận diện 100%
+                    VirtualInputManager:SendKeyEvent(false, key, false, game)
+                end)
             end
         end
     end
@@ -1997,4 +2174,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("YuiHuB Mobile V10 Loaded - 100% Full Source Code, Uncompressed Format!")
+print("YuiHuB Mobile V11 Loaded - FULL 1500+ LINES - FIXED ALL BUGS!")
