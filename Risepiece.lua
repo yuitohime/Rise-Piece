@@ -1,9 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (RISE PIECE / GENERIC) - [V7]
--- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để.
--- [V7 UPDATE]: Thêm Tab Egg (Quét Workspace.EggSpawns).
--- Thêm ESP Trứng nhìn xuyên tường (Tối ưu chống lag).
--- Lọc Trứng theo Tên/Độ hiếm (Mythic, Divine, Epic...) & Auto Teleport.
+-- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MULTI-GAME) - [PRO VERSION]
+-- Giao diện được thiết kế lại chuẩn YuiHuB (Maru Hub Style).
+-- Tối ưu hóa hiệu năng, Chống Memory Leak triệt để. Đầy đủ chức năng gốc.
+-- [UPDATE]: Cải tiến quét Quái/Boss toàn bản đồ, Thêm Skill (Z,X,C,V,B,N,E,F,T,J).
+-- Thêm Hàng chờ Tọa Độ (Lưu & Teleport 3 vị trí).
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -38,31 +38,35 @@ local Config = {
     AutoFarm = false,
     AutoBoss = false,
     FarmAllBosses = false, 
-    AutoEgg = false, -- V7 Auto Egg
-    EggESP = false, -- V7 ESP
-    SelectedEggRarity = "Tất cả", -- V7 Lọc trứng
+    AutoEgg = false,
+    EggESP = false,
+    SelectedEggRarity = "Tất cả",
     AutoAttack = false,
     FastAttack = false,
     AutoFishing = false, 
-    AutoSkillZ = false,
-    AutoSkillX = false,
-    AutoSkillC = false,
-    AutoSkillV = false,
-    AutoSkillE = false,
+    -- Skills
+    AutoSkillZ = false, AutoSkillX = false, AutoSkillC = false, AutoSkillV = false, 
+    AutoSkillB = false, AutoSkillN = false, AutoSkillE = false, AutoSkillF = false, 
+    AutoSkillT = false, AutoSkillJ = false,
+    
     MovementMode = "Teleport", 
     FarmPosition = "Trên đầu",
     Distance = 5,
     TweenDuration = 0.5,
     BossWaitTime = 0.5, 
+    
     SelectedWeapons = {}, 
     SelectedMobs = {}, 
     SelectedBosses = {},
     MobListCache = {}, 
     BossDataCache = {}, 
     MobDataCache = {},
-    MenuOpen = false,
+    
+    MenuOpen = true,
     CurrentBossIndex = 1,
     LastBossCheck = tick(),
+    
+    -- Player Config
     WalkSpeedEnabled = false,
     WalkSpeed = 50,
     JumpPowerEnabled = false,
@@ -71,20 +75,24 @@ local Config = {
     Fly = false,
     FlySpeed = 50,
     Noclip = false,
-    WalkOnWater = false
+    WalkOnWater = false,
+    
+    -- Coordinate Saver
+    SavedPos1 = nil,
+    SavedPos2 = nil,
+    SavedPos3 = nil
 }
 
 local isTweening = false
 local currentTween = nil
 local activelyFarming = false 
 
--- [ HỆ THỐNG GẮN UI SIÊU AN TOÀN ]
-local UI_NAME = "RisePiece_PremiumUI_V7"
+-- [ TẠO GIAO DIỆN YUIHUB (MARU HUB STYLE) ]
+local UI_NAME = "YuiHuB_Premium_UI"
 local targetParent = nil
 pcall(function()
     if get_hidden_gui or gethui then
-        local hiddenUI = get_hidden_gui or gethui
-        targetParent = hiddenUI()
+        targetParent = (get_hidden_gui or gethui)()
     elseif game:GetService("CoreGui") then
         targetParent = game:GetService("CoreGui")
     end
@@ -92,11 +100,6 @@ end)
 
 if not targetParent then
     targetParent = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
-end
-
-if not targetParent then 
-    warn("[V7] LỖI: Không thể tải UI, vui lòng đợi game load xong rồi chạy lại!")
-    return
 end
 
 if targetParent:FindFirstChild(UI_NAME) then
@@ -108,208 +111,246 @@ ScreenGui.Name = UI_NAME
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = targetParent
 
--- Nút Mở/Đóng 
+-- Nút Toggle Góc Màn Hình
 local ToggleButton = Instance.new("TextButton")
-ToggleButton.Name = "ToggleButton"
-ToggleButton.Size = UDim2.new(0, 40, 0, 40)
-ToggleButton.Position = UDim2.new(0, 20, 0.5, -20)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-ToggleButton.Text = ""
-ToggleButton.Rotation = 45
+ToggleButton.Size = UDim2.new(0, 45, 0, 45)
+ToggleButton.Position = UDim2.new(0, 15, 0.5, -22)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(26, 29, 36)
+ToggleButton.Text = "YUI"
+ToggleButton.TextColor3 = Color3.fromRGB(100, 170, 255)
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.TextSize = 14
 ToggleButton.Parent = ScreenGui
+Instance.new("UICorner", ToggleButton).CornerRadius = UDim.new(0, 8)
+Instance.new("UIStroke", ToggleButton).Color = Color3.fromRGB(60, 65, 80)
 
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(0, 8)
-ToggleCorner.Parent = ToggleButton
-
-local ToggleLabel = Instance.new("TextLabel")
-ToggleLabel.Size = UDim2.new(1, 0, 1, 0)
-ToggleLabel.BackgroundTransparency = 1
-ToggleLabel.Text = "MỞ"
-ToggleLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
-ToggleLabel.Font = Enum.Font.GothamBold
-ToggleLabel.TextSize = 14
-ToggleLabel.Rotation = -45
-ToggleLabel.Parent = ToggleButton
-
--- Khung Menu Chính
+-- Main Frame (Giống Maru Hub)
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 0, 0, 0)
+MainFrame.Size = UDim2.new(0, 700, 0, 450)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+MainFrame.BackgroundColor3 = Color3.fromRGB(17, 19, 24) -- Dark theme base
 MainFrame.ClipsDescendants = true
 MainFrame.Active = true
 MainFrame.Draggable = true 
 MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 10)
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = MainFrame
+-- Sidebar (Bên trái)
+local Sidebar = Instance.new("Frame")
+Sidebar.Size = UDim2.new(0, 180, 1, 0)
+Sidebar.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainFrame
 
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Color = Color3.fromRGB(60, 60, 70)
-MainStroke.Thickness = 2
-MainStroke.Parent = MainFrame
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, 0, 0, 60)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "  YuiHuB"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 22
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = Sidebar
 
--- Nút X để xóa Menu
+local VersionLabel = Instance.new("TextLabel")
+VersionLabel.Size = UDim2.new(1, -20, 0, 20)
+VersionLabel.Position = UDim2.new(0, 20, 0, 40)
+VersionLabel.BackgroundTransparency = 1
+VersionLabel.Text = "Multi-Game Script"
+VersionLabel.TextColor3 = Color3.fromRGB(150, 150, 160)
+VersionLabel.Font = Enum.Font.Gotham
+VersionLabel.TextSize = 11
+VersionLabel.TextXAlignment = Enum.TextXAlignment.Left
+VersionLabel.Parent = Sidebar
+
+local SidebarScroll = Instance.new("ScrollingFrame")
+SidebarScroll.Size = UDim2.new(1, 0, 1, -70)
+SidebarScroll.Position = UDim2.new(0, 0, 0, 70)
+SidebarScroll.BackgroundTransparency = 1
+SidebarScroll.ScrollBarThickness = 2
+SidebarScroll.Parent = Sidebar
+
+local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SidebarLayout.Padding = UDim.new(0, 2)
+SidebarLayout.Parent = SidebarScroll
+
+-- Content Area (Bên phải)
+local ContentArea = Instance.new("Frame")
+ContentArea.Size = UDim2.new(1, -180, 1, 0)
+ContentArea.Position = UDim2.new(0, 180, 0, 0)
+ContentArea.BackgroundTransparency = 1
+ContentArea.Parent = MainFrame
+
+local Topbar = Instance.new("Frame")
+Topbar.Size = UDim2.new(1, 0, 0, 50)
+Topbar.BackgroundTransparency = 1
+Topbar.Parent = ContentArea
+
+local CurrentTabTitle = Instance.new("TextLabel")
+CurrentTabTitle.Size = UDim2.new(1, -20, 1, 0)
+CurrentTabTitle.Position = UDim2.new(0, 20, 0, 0)
+CurrentTabTitle.BackgroundTransparency = 1
+CurrentTabTitle.Text = "Overview"
+CurrentTabTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+CurrentTabTitle.Font = Enum.Font.GothamBold
+CurrentTabTitle.TextSize = 18
+CurrentTabTitle.TextXAlignment = Enum.TextXAlignment.Left
+CurrentTabTitle.Parent = Topbar
+
 local CloseMenuBtn = Instance.new("TextButton")
-CloseMenuBtn.Size = UDim2.new(0, 25, 0, 25)
-CloseMenuBtn.Position = UDim2.new(1, -35, 0, 10)
+CloseMenuBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseMenuBtn.Position = UDim2.new(1, -40, 0, 10)
 CloseMenuBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 CloseMenuBtn.Text = "X"
 CloseMenuBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseMenuBtn.Font = Enum.Font.GothamBold
-CloseMenuBtn.TextSize = 14
-CloseMenuBtn.ZIndex = 10
-CloseMenuBtn.Parent = MainFrame
+CloseMenuBtn.Parent = Topbar
+Instance.new("UICorner", CloseMenuBtn).CornerRadius = UDim.new(0, 6)
+CloseMenuBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy(); DisconnectAll() end)
 
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(1, 0)
-CloseCorner.Parent = CloseMenuBtn
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, 0, 1, -50)
+ContentContainer.Position = UDim2.new(0, 0, 0, 50)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Parent = ContentArea
 
-CloseMenuBtn.MouseButton1Click:Connect(function()
-    DisconnectAll()
-    ScreenGui:Destroy()
-end)
-
--- [ BỐ CỤC: TIỆN ÍCH (TRÁI) & CHỨC NĂNG (PHẢI) ]
-local LeftPanel = Instance.new("Frame")
-LeftPanel.Size = UDim2.new(0, 120, 1, 0)
-LeftPanel.Position = UDim2.new(0, 0, 0, 0)
-LeftPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-LeftPanel.Parent = MainFrame
-
-local RightPanel = Instance.new("Frame")
-RightPanel.Size = UDim2.new(1, -120, 1, 0)
-RightPanel.Position = UDim2.new(0, 120, 0, 0)
-RightPanel.BackgroundTransparency = 1
-RightPanel.Parent = MainFrame
-
-local LeftLayout = Instance.new("UIListLayout")
-LeftLayout.Parent = LeftPanel
-LeftLayout.SortOrder = Enum.SortOrder.LayoutOrder
-LeftLayout.Padding = UDim.new(0, 5)
-LeftLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-local PanelPadding = Instance.new("UIPadding")
-PanelPadding.Parent = LeftPanel
-PanelPadding.PaddingTop = UDim.new(0, 10)
-
--- Tiêu đề Menu
-local MenuTitle = Instance.new("TextLabel")
-MenuTitle.Size = UDim2.new(1, 0, 0, 30)
-MenuTitle.BackgroundTransparency = 1
-MenuTitle.Text = "TIỆN ÍCH [V7]"
-MenuTitle.TextColor3 = Color3.fromRGB(0, 255, 128)
-MenuTitle.Font = Enum.Font.GothamBold
-MenuTitle.TextSize = 15
-MenuTitle.Parent = LeftPanel
-
--- Các Tab Chức Năng
+-- Hệ thống Quản lý Tab
 local Tabs = {}
 local TabContents = {}
 
+local function CreateCategory(name)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -20, 0, 25)
+    lbl.Position = UDim2.new(0, 20, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = name:upper()
+    lbl.TextColor3 = Color3.fromRGB(120, 120, 130)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = SidebarScroll
+end
+
 local function SwitchTab(tabName)
+    CurrentTabTitle.Text = tabName
     for name, content in pairs(TabContents) do
         content.Visible = (name == tabName)
     end
     for name, btn in pairs(Tabs) do
         if name == tabName then
-            btn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-            btn.TextColor3 = Color3.fromRGB(0, 255, 128)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+            btn.BackgroundColor3 = Color3.fromRGB(40, 45, 55)
             btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+            btn.TextColor3 = Color3.fromRGB(180, 180, 190)
         end
     end
 end
 
 local function CreateTabButton(name)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.9, 0, 0, 35)
-    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    btn.Text = name
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.GothamSemibold
-    btn.TextSize = 14
-    btn.Parent = LeftPanel
+    local btnFrame = Instance.new("Frame")
+    btnFrame.Size = UDim2.new(1, 0, 0, 35)
+    btnFrame.BackgroundTransparency = 1
+    btnFrame.Parent = SidebarScroll
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = btn
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -20, 1, 0)
+    btn.Position = UDim2.new(0, 10, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+    btn.Text = "  " .. name
+    btn.TextColor3 = Color3.fromRGB(180, 180, 190)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 13
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = btnFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     
     local content = Instance.new("ScrollingFrame")
-    content.Size = UDim2.new(1, -20, 1, -20)
-    content.Position = UDim2.new(0, 10, 0, 10)
+    content.Size = UDim2.new(1, -30, 1, -10)
+    content.Position = UDim2.new(0, 15, 0, 0)
     content.BackgroundTransparency = 1
-    content.ScrollBarThickness = 4
+    content.ScrollBarThickness = 3
     content.Visible = false
-    content.Parent = RightPanel
+    content.Parent = ContentContainer
     
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 10)
+    layout.Padding = UDim.new(0, 12)
     layout.Parent = content
     
     Tabs[name] = btn
     TabContents[name] = content
-    
     btn.MouseButton1Click:Connect(function() SwitchTab(name) end)
+    
+    -- Tự động resize scrolling frame
+    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+        content.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
+    end)
+    
     return content
 end
 
--- V7: Khởi tạo tất cả các Tab
-local MainTab = CreateTabButton("Main")
-local BossTab = CreateTabButton("Boss")
-local EggTab = CreateTabButton("Egg") -- V7 Tab Trứng Mới
-local FruitTab = CreateTabButton("Fruit") 
-local TeleportTab = CreateTabButton("Teleport") 
-local FishingTab = CreateTabButton("Fishing")
-local PlayerTab = CreateTabButton("Player") 
-local SettingTab = CreateTabButton("Setting")
+-- [ CÁC HÀM UI COMPONENTS CƠ BẢN GIỐNG MARU HUB ]
+local function CreateSection(parent, title)
+    local sec = Instance.new("Frame")
+    sec.Size = UDim2.new(1, 0, 0, 30)
+    sec.BackgroundTransparency = 1
+    sec.Parent = parent
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = title
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 210)
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 14
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = sec
+    return sec
+end
 
--- [ COMPONENTS HỖ TRỢ ]
 local function CreateToggle(parent, text, configKey)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 40)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    frame.Size = UDim2.new(1, 0, 0, 45)
+    frame.BackgroundColor3 = Color3.fromRGB(28, 31, 38)
     frame.Parent = parent
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -60, 1, 0)
-    label.Position = UDim2.new(0, 10, 0, 0)
+    label.Size = UDim2.new(1, -70, 1, 0)
+    label.Position = UDim2.new(0, 15, 0, 0)
     label.BackgroundTransparency = 1
     label.Text = text
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextColor3 = Color3.fromRGB(230, 230, 240)
     label.Font = Enum.Font.GothamSemibold
-    label.TextSize = 14
+    label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
     
     local switchBg = Instance.new("TextButton")
-    switchBg.Size = UDim2.new(0, 40, 0, 20)
-    switchBg.Position = UDim2.new(1, -50, 0.5, -10)
-    switchBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    switchBg.BackgroundTransparency = 0.5
+    switchBg.Size = UDim2.new(0, 44, 0, 22)
+    switchBg.Position = UDim2.new(1, -60, 0.5, -11)
+    switchBg.BackgroundColor3 = Color3.fromRGB(45, 48, 55)
     switchBg.Text = ""
     switchBg.Parent = frame
     Instance.new("UICorner", switchBg).CornerRadius = UDim.new(1, 0)
     
     local circle = Instance.new("Frame")
-    circle.Size = UDim2.new(0, 16, 0, 16)
-    circle.Position = UDim2.new(0, 2, 0.5, -8)
-    circle.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    circle.Size = UDim2.new(0, 18, 0, 18)
+    circle.Position = UDim2.new(0, 2, 0.5, -9)
+    circle.BackgroundColor3 = Color3.fromRGB(200, 200, 210)
     circle.Parent = switchBg
     Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
     
     local function UpdateUI()
         local toggled = Config[configKey]
-        local goalPos = toggled and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-        local goalCol = toggled and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(200, 200, 200)
+        local goalPos = toggled and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+        local goalCol = toggled and Color3.fromRGB(100, 170, 255) or Color3.fromRGB(200, 200, 210)
+        local bgCol = toggled and Color3.fromRGB(40, 60, 100) or Color3.fromRGB(45, 48, 55)
         TweenService:Create(circle, TweenInfo.new(0.2), {Position = goalPos, BackgroundColor3 = goalCol}):Play()
+        TweenService:Create(switchBg, TweenInfo.new(0.2), {BackgroundColor3 = bgCol}):Play()
     end
     
     switchBg.MouseButton1Click:Connect(function()
@@ -322,60 +363,55 @@ end
 
 local function CreateButton(parent, text, callback)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, 0, 0, 35)
-    btn.BackgroundColor3 = Color3.fromRGB(40, 100, 200)
+    btn.Size = UDim2.new(1, 0, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 90, 180)
     btn.Text = text
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 14
+    btn.TextSize = 13
     btn.Parent = parent
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     btn.MouseButton1Click:Connect(callback)
     return btn
 end
 
 local function CreateSlider(parent, text, min, max, default, configKey, isDecimal)
     local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(1, 0, 0, 50)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    frame.Size = UDim2.new(1, 0, 0, 60)
+    frame.BackgroundColor3 = Color3.fromRGB(28, 31, 38)
     frame.Parent = parent
-    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
     
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -20, 0, 20)
-    label.Position = UDim2.new(0, 10, 0, 5)
+    label.Size = UDim2.new(1, -30, 0, 30)
+    label.Position = UDim2.new(0, 15, 0, 5)
     label.BackgroundTransparency = 1
     label.Text = text .. ": " .. tostring(default)
-    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextColor3 = Color3.fromRGB(230, 230, 240)
     label.Font = Enum.Font.GothamSemibold
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = frame
     
     local sliderBg = Instance.new("TextButton")
-    sliderBg.Size = UDim2.new(1, -20, 0, 10)
-    sliderBg.Position = UDim2.new(0, 10, 0, 30)
-    sliderBg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    sliderBg.Size = UDim2.new(1, -30, 0, 8)
+    sliderBg.Position = UDim2.new(0, 15, 0, 40)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(45, 48, 55)
     sliderBg.Text = ""
     sliderBg.Parent = frame
     Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
     
     local sliderFill = Instance.new("Frame")
     sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(0, 255, 128)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(100, 170, 255)
     sliderFill.Parent = sliderBg
     Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
     
     local dragging = false
-    
     local function updateSlider(input)
         local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
         local value = min + (max - min) * pos
-        if not isDecimal then 
-            value = math.floor(value) 
-        else 
-            value = math.floor(value * 10) / 10 
-        end
+        if not isDecimal then value = math.floor(value) else value = math.floor(value * 10) / 10 end
         sliderFill.Size = UDim2.new(pos, 0, 1, 0)
         label.Text = text .. ": " .. tostring(value)
         Config[configKey] = value
@@ -383,73 +419,82 @@ local function CreateSlider(parent, text, min, max, default, configKey, isDecima
     
     sliderBg.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            updateSlider(input)
+            dragging = true; updateSlider(input)
         end
     end)
-    
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
     end)
-    
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            updateSlider(input)
-        end
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then updateSlider(input) end
     end)
-    
     Config[configKey] = default
     return frame
 end
 
--- UI Khung Dropdown thu gọn
 local function CreateDropdown(parent, titleText)
     local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, 0, 0, 35)
-    container.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+    container.Size = UDim2.new(1, 0, 0, 45)
+    container.BackgroundColor3 = Color3.fromRGB(28, 31, 38)
     container.ClipsDescendants = true
     container.Parent = parent
-    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 6)
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 8)
     
     local toggleBtn = Instance.new("TextButton")
-    toggleBtn.Size = UDim2.new(1, 0, 0, 35)
+    toggleBtn.Size = UDim2.new(1, 0, 0, 45)
     toggleBtn.BackgroundTransparency = 1
-    toggleBtn.Text = "▼ " .. titleText
-    toggleBtn.TextColor3 = Color3.fromRGB(255, 200, 0)
+    toggleBtn.Text = "   ▼ " .. titleText
+    toggleBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
     toggleBtn.Font = Enum.Font.GothamBold
-    toggleBtn.TextSize = 14
+    toggleBtn.TextSize = 13
+    toggleBtn.TextXAlignment = Enum.TextXAlignment.Left
     toggleBtn.Parent = container
     
     local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Size = UDim2.new(1, 0, 0, 150)
-    scrollFrame.Position = UDim2.new(0, 0, 0, 35)
+    scrollFrame.Size = UDim2.new(1, -10, 1, -50)
+    scrollFrame.Position = UDim2.new(0, 5, 0, 45)
     scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 4
+    scrollFrame.ScrollBarThickness = 3
     scrollFrame.Visible = false
     scrollFrame.Parent = container
     
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 4)
     layout.Parent = scrollFrame
     
     local isOpen = false
     toggleBtn.MouseButton1Click:Connect(function()
         isOpen = not isOpen
         scrollFrame.Visible = isOpen
-        toggleBtn.Text = (isOpen and "▲ " or "▼ ") .. titleText
-        if isOpen then
-            container.Size = UDim2.new(1, 0, 0, 185)
-        else
-            container.Size = UDim2.new(1, 0, 0, 35)
-        end
+        toggleBtn.Text = (isOpen and "   ▲ " or "   ▼ ") .. titleText
+        container.Size = isOpen and UDim2.new(1, 0, 0, 220) or UDim2.new(1, 0, 0, 45)
     end)
-    
-    return scrollFrame, layout
+    return scrollFrame, layout, container
 end
 
--- Hàm Teleport Cơ Bản Chung Toàn Cục
+-- [ KHỞI TẠO CÁC DANH MỤC & TAB YUIHUB ]
+CreateCategory("Workspace")
+local OverviewTab = CreateTabButton("Overview")
+local FarmingTab = CreateTabButton("Farming")
+
+CreateCategory("Bosses")
+local BossesTab = CreateTabButton("Bosses")
+
+CreateCategory("World")
+local WorldTravelTab = CreateTabButton("Travel & Coords")
+local WorldItemsTab = CreateTabButton("Eggs & Fruits")
+
+CreateCategory("Activities")
+local PlayerTab = CreateTabButton("Player Mods")
+local FishingTab = CreateTabButton("Fishing")
+
+CreateCategory("System")
+local SettingsTab = CreateTabButton("Settings")
+
+-- =========================================================
+-- [ LÕI LOGIC: HÀM QUÉT SIÊU VIỆT & TÌM KIẾM ]
+-- =========================================================
 local function TeleportToPos(pos)
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -457,21 +502,14 @@ local function TeleportToPos(pos)
     end
 end
 
--- [ TỐI ƯU HÓA: HỆ THỐNG LẤY THƯ MỤC QUÁI ]
 local function GetMobFolders()
     local folders = {}
-    local mapa = Workspace:FindFirstChild("Mapa") or Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("map")
-    if mapa and mapa:FindFirstChild("Enemies") then
-        table.insert(folders, mapa.Enemies)
+    local possibleNames = {"mapa", "map", "enemies", "monsters", "mobs", "npcs", "spawns"}
+    for _, name in ipairs(possibleNames) do
+        local f = Workspace:FindFirstChild(name) or Workspace:FindFirstChild(name:upper()) or Workspace:FindFirstChild(name:sub(1,1):upper()..name:sub(2))
+        if f then table.insert(folders, f) end
     end
-    local monsters = Workspace:FindFirstChild("Monsters") or Workspace:FindFirstChild("monsters")
-    if monsters then
-        table.insert(folders, monsters)
-    end
-    
-    if #folders == 0 then
-        table.insert(folders, Workspace)
-    end
+    if #folders == 0 then table.insert(folders, Workspace) end
     return folders
 end
 
@@ -479,407 +517,208 @@ local function IsAlive(mob)
     return mob and mob:FindFirstChild("Humanoid") and mob.Humanoid.Health > 0 and mob:FindFirstChild("HumanoidRootPart")
 end
 
-local function GetMobLevel(mobName)
-    local level = mobName:match("%d+")
-    return level and tonumber(level) or 1
-end
-
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
-        if string.match(lowerName, "^spawnner") or string.match(lowerName, "^spawner") then return end
+        if lowerName:match("^spawnner") or lowerName:match("^spawner") then return end
         
-        local isDirectWorkspace = (obj.Parent == Workspace)
-        
-        if string.match(lowerName, "boss$") or (isDirectWorkspace and string.match(lowerName, "lv%.%s*%d+")) then
+        -- Nâng cấp nhận diện Quái/Boss đa tựa game
+        if lowerName:match("boss") then
             Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
+        elseif lowerName:match("monster") or lowerName:match("enemy") or lowerName:match("mob") or lowerName:match("npc") or lowerName:match("lv") or lowerName:match("level") then
+            Config.MobListCache[obj.Name] = true
+            Config.MobDataCache[obj.Name] = obj.HumanoidRootPart.Position
         else
+            -- Lấy dự phòng tất cả model có Humanoid
             Config.MobListCache[obj.Name] = true
             Config.MobDataCache[obj.Name] = obj.HumanoidRootPart.Position
         end
     end
 end
 
--- [ XÂY DỰNG TAB: MAIN & BOSS ]
-local MobListContainer, MobListLayout = CreateDropdown(MainTab, "Danh sách Quái Bản Đồ")
-local BossListContainer, BossListLayout = CreateDropdown(BossTab, "Danh sách Boss Bản Đồ")
+-- =========================================================
+-- [ TAB: OVERVIEW (Giao diện tổng quan mẫu) ]
+-- =========================================================
+CreateSection(OverviewTab, "Chào mừng đến với YuiHuB")
+local InfoLbl = Instance.new("TextLabel")
+InfoLbl.Size = UDim2.new(1, 0, 0, 60)
+InfoLbl.BackgroundTransparency = 1
+InfoLbl.Text = "YuiHuB Premium Script\nHỗ trợ Auto Farm, Auto Boss, Lưu Tọa độ, Quét mở rộng đa tựa game.\nSử dụng các Tab bên trái để điều hướng."
+InfoLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
+InfoLbl.Font = Enum.Font.Gotham
+InfoLbl.TextSize = 13
+InfoLbl.TextWrapped = true
+InfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+InfoLbl.Parent = OverviewTab
 
-local function UpdateMobUIList()
-    for _, child in pairs(MobListContainer:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
+-- =========================================================
+-- [ TAB: FARMING (Quái & Kỹ năng) ]
+-- =========================================================
+CreateSection(FarmingTab, "Cài Đặt Farm Quái")
+CreateButton(FarmingTab, "Quét Lại Quái Bản Đồ", function()
+    local folders = GetMobFolders()
+    for _, folder in ipairs(folders) do
+        for _, obj in pairs(folder:GetDescendants()) do ScanObj(obj) end
     end
-    
+    for _, obj in pairs(Workspace:GetChildren()) do ScanObj(obj) end
+    UpdateMobUIList()
+end)
+
+local MobListContainer, MobListLayout = CreateDropdown(FarmingTab, "Danh Sách Quái")
+function UpdateMobUIList()
+    for _, child in pairs(MobListContainer:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     for mobName, _ in pairs(Config.MobListCache) do
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 0, 30)
-        btn.BackgroundColor3 = Config.SelectedMobs[mobName] and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(40, 40, 45)
-        btn.Text = " " .. mobName
+        btn.BackgroundColor3 = Config.SelectedMobs[mobName] and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(35, 38, 45)
+        btn.Text = "   " .. mobName
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.Font = Enum.Font.Gotham
-        btn.TextSize = 13
+        btn.TextSize = 12
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.Parent = MobListContainer
-        
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
         btn.MouseButton1Click:Connect(function()
-            if Config.SelectedMobs[mobName] then
-                Config.SelectedMobs[mobName] = nil
-                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-            else
-                Config.SelectedMobs[mobName] = true
-                btn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
-            end
+            Config.SelectedMobs[mobName] = not Config.SelectedMobs[mobName]
+            btn.BackgroundColor3 = Config.SelectedMobs[mobName] and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(35, 38, 45)
         end)
     end
     MobListContainer.CanvasSize = UDim2.new(0, 0, 0, MobListLayout.AbsoluteContentSize.Y)
 end
 
-local function UpdateBossUIList()
-    for _, child in pairs(BossListContainer:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
+CreateToggle(FarmingTab, "Bật Auto Farm Quái", "AutoFarm")
+
+CreateSection(FarmingTab, "Tự Động Tung Kỹ Năng (Skills)")
+CreateToggle(FarmingTab, "Auto Skill [Z]", "AutoSkillZ")
+CreateToggle(FarmingTab, "Auto Skill [X]", "AutoSkillX")
+CreateToggle(FarmingTab, "Auto Skill [C]", "AutoSkillC")
+CreateToggle(FarmingTab, "Auto Skill [V]", "AutoSkillV")
+CreateToggle(FarmingTab, "Auto Skill [B]", "AutoSkillB")
+CreateToggle(FarmingTab, "Auto Skill [N]", "AutoSkillN")
+CreateToggle(FarmingTab, "Auto Skill [E]", "AutoSkillE")
+CreateToggle(FarmingTab, "Auto Skill [F]", "AutoSkillF")
+CreateToggle(FarmingTab, "Auto Skill [T]", "AutoSkillT")
+CreateToggle(FarmingTab, "Auto Skill [J]", "AutoSkillJ")
+
+-- =========================================================
+-- [ TAB: BOSSES ]
+-- =========================================================
+CreateSection(BossesTab, "Cài Đặt Đánh Boss")
+CreateButton(BossesTab, "Quét Lại Boss", function()
+    local folders = GetMobFolders()
+    for _, folder in ipairs(folders) do
+        for _, obj in pairs(folder:GetDescendants()) do ScanObj(obj) end
     end
-    
+    for _, obj in pairs(Workspace:GetChildren()) do ScanObj(obj) end
+    UpdateBossUIList()
+end)
+
+local BossListContainer, BossListLayout = CreateDropdown(BossesTab, "Danh Sách Boss")
+function UpdateBossUIList()
+    for _, child in pairs(BossListContainer:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     for bossName, coords in pairs(Config.BossDataCache) do
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 0, 30)
-        btn.BackgroundColor3 = Config.SelectedBosses[bossName] and Color3.fromRGB(200, 50, 50) or Color3.fromRGB(40, 40, 45)
-        btn.Text = " [BOSS] " .. bossName
+        btn.BackgroundColor3 = Config.SelectedBosses[bossName] and Color3.fromRGB(200, 60, 60) or Color3.fromRGB(35, 38, 45)
+        btn.Text = "   [BOSS] " .. bossName
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 13
+        btn.TextSize = 12
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.Parent = BossListContainer
-        
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
         btn.MouseButton1Click:Connect(function()
-            if Config.SelectedBosses[bossName] then
-                Config.SelectedBosses[bossName] = nil
-                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-            else
-                Config.SelectedBosses[bossName] = true
-                btn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-            end
+            Config.SelectedBosses[bossName] = not Config.SelectedBosses[bossName]
+            btn.BackgroundColor3 = Config.SelectedBosses[bossName] and Color3.fromRGB(200, 60, 60) or Color3.fromRGB(35, 38, 45)
         end)
     end
     BossListContainer.CanvasSize = UDim2.new(0, 0, 0, BossListLayout.AbsoluteContentSize.Y)
 end
 
-local function ScanAllMap()
-    local folders = GetMobFolders()
-    if #folders > 0 and folders[1] ~= Workspace then
-        for _, folder in ipairs(folders) do
-            for _, obj in pairs(folder:GetDescendants()) do ScanObj(obj) end
-        end
-    else
-        local allDescendants = Workspace:GetDescendants()
-        for i, obj in pairs(allDescendants) do 
-            ScanObj(obj) 
-            if i % 1000 == 0 then task.wait() end 
-        end
-    end
-    for _, obj in pairs(Workspace:GetChildren()) do ScanObj(obj) end
-    
-    for name, _ in pairs(Config.SelectedMobs) do Config.MobListCache[name] = true end
-    for name, _ in pairs(Config.SelectedBosses) do 
-        if Config.BossDataCache[name] then Config.SelectedBosses[name] = true end
-    end
-    UpdateMobUIList(); UpdateBossUIList()
-end
-
-CreateButton(MainTab, "Quét Quái Bản Đồ", function() ScanAllMap() end)
-CreateToggle(MainTab, "Bật/Tắt Auto Farm Quái", "AutoFarm")
-CreateToggle(MainTab, "Auto Skill [Z]", "AutoSkillZ")
-CreateToggle(MainTab, "Auto Skill [X]", "AutoSkillX")
-CreateToggle(MainTab, "Auto Skill [C]", "AutoSkillC")
-CreateToggle(MainTab, "Auto Skill [V]", "AutoSkillV")
-CreateToggle(MainTab, "Auto Skill [E]", "AutoSkillE")
-
-CreateButton(BossTab, "Quét Boss Bản Đồ", function() ScanAllMap() end)
-CreateToggle(BossTab, "Bật/Tắt Auto Boss", "AutoBoss")
-CreateToggle(BossTab, "Farm Tất Cả Boss (Lùng Sục)", "FarmAllBosses")
-CreateSlider(BossTab, "Thời gian chờ Boss (s)", 0.1, 60, 0.5, "BossWaitTime", true)
+CreateToggle(BossesTab, "Bật Auto Boss", "AutoBoss")
+CreateToggle(BossesTab, "Farm Tất Cả Boss (Lùng Sục)", "FarmAllBosses")
+CreateSlider(BossesTab, "Thời gian chờ Boss (s)", 0.1, 60, 0.5, "BossWaitTime", true)
 
 -- =========================================================
--- [ V7 MỚI: TAB EGG (TRỨNG) - ESP VÀ AUTO TELEPORT ]
+-- [ TAB: WORLD TRAVEL & COORDS (Chức năng Lưu Tọa Độ Mới) ]
 -- =========================================================
-local function GetEggs()
-    local eggs = {}
-    local eggFolder = Workspace:FindFirstChild("EggSpawns") or Workspace:FindFirstChild("Eggs")
-    if eggFolder then
-        for _, obj in ipairs(eggFolder:GetChildren()) do
-            if obj:IsA("Model") or obj:IsA("BasePart") then
-                table.insert(eggs, obj)
-            end
-        end
-    else
-        -- Quét fallback Workspace nếu không có thư mục chuyên dụng
-        for _, obj in ipairs(Workspace:GetChildren()) do
-            if (obj:IsA("Model") or obj:IsA("BasePart")) and obj.Name:lower():match("egg") then
-                table.insert(eggs, obj)
-            end
-        end
-    end
-    return eggs
-end
+CreateSection(WorldTravelTab, "Hệ Thống Dịch Chuyển Tọa Độ")
 
-CreateToggle(EggTab, "Bật ESP Trứng (Xuyên tường)", "EggESP")
-CreateToggle(EggTab, "Auto Teleport Tới Trứng (Khi xuất hiện)", "AutoEgg")
-
-local EggRarityList = {"Tất cả", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Divine"}
-CreateButton(EggTab, "Lọc Trứng: " .. Config.SelectedEggRarity, function(btn)
-    local currentIndex = table.find(EggRarityList, Config.SelectedEggRarity) or 1
-    currentIndex = currentIndex + 1
-    if currentIndex > #EggRarityList then currentIndex = 1 end
-    Config.SelectedEggRarity = EggRarityList[currentIndex]
-    btn.Text = "Lọc Trứng: " .. Config.SelectedEggRarity
-end)
-
-local EggScrollFrame, EggLayout = CreateDropdown(EggTab, "Danh Sách Trứng Đang Có")
-
-local function ScanEggsAndUpdateUI()
-    for _, child in pairs(EggScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then child:Destroy() end
-    end
+local function CreateCoordRow(parent, title, configKey)
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(1, 0, 0, 45)
+    frame.BackgroundColor3 = Color3.fromRGB(28, 31, 38)
+    frame.Parent = parent
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
     
-    local eggs = GetEggs()
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(0.5, 0, 1, 0)
+    status.Position = UDim2.new(0, 15, 0, 0)
+    status.BackgroundTransparency = 1
+    status.Text = title .. ": Chưa Lưu"
+    status.TextColor3 = Color3.fromRGB(200, 200, 210)
+    status.Font = Enum.Font.GothamSemibold
+    status.TextSize = 12
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.Parent = frame
     
-    if #eggs == 0 then
-        local msg = Instance.new("TextLabel")
-        msg.Size = UDim2.new(1, 0, 0, 30)
-        msg.BackgroundTransparency = 1
-        msg.Text = "Không tìm thấy Trứng nào trong map."
-        msg.TextColor3 = Color3.fromRGB(200, 100, 100)
-        msg.Font = Enum.Font.Gotham
-        msg.TextSize = 13
-        msg.Parent = EggScrollFrame
-    else
-        for _, egg in ipairs(eggs) do
-            local part = egg:IsA("Model") and (egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")) or egg
-            if not part then continue end
-            
-            local itemFrame = Instance.new("Frame")
-            itemFrame.Size = UDim2.new(1, 0, 0, 45)
-            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-            itemFrame.Parent = EggScrollFrame
-            Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 6)
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
-            nameLabel.Position = UDim2.new(0, 10, 0, 0)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Text = "Trứng: " .. egg.Name
-            nameLabel.TextColor3 = Color3.fromRGB(150, 255, 150)
-            nameLabel.Font = Enum.Font.GothamSemibold
-            nameLabel.TextSize = 13
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            nameLabel.Parent = itemFrame
-            
-            local teleBtn = Instance.new("TextButton")
-            teleBtn.Size = UDim2.new(0, 60, 0, 30)
-            teleBtn.Position = UDim2.new(1, -70, 0.5, -15)
-            teleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
-            teleBtn.Text = "Tele"
-            teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            teleBtn.Font = Enum.Font.GothamBold
-            teleBtn.Parent = itemFrame
-            Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
-            
-            teleBtn.MouseButton1Click:Connect(function()
-                TeleportToPos(part.Position)
-            end)
-        end
-    end
-    EggScrollFrame.CanvasSize = UDim2.new(0, 0, 0, EggLayout.AbsoluteContentSize.Y)
-end
-CreateButton(EggTab, "Quét Danh Sách Trứng", ScanEggsAndUpdateUI)
-
--- [ HỆ THỐNG ESP TRỨNG TỐI ƯU HÓA (V7) ]
-local EspFolder = Instance.new("Folder")
-EspFolder.Name = "RisePiece_EggESP"
-EspFolder.Parent = targetParent
-
-local espCache = {}
-SafeConnect(RunService.Heartbeat, function()
-    if Config.EggESP then
-        local eggs = GetEggs()
-        local currentEggs = {}
+    local saveBtn = Instance.new("TextButton")
+    saveBtn.Size = UDim2.new(0, 60, 0, 25)
+    saveBtn.Position = UDim2.new(1, -140, 0.5, -12.5)
+    saveBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+    saveBtn.Text = "Lưu"
+    saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    saveBtn.Font = Enum.Font.GothamBold
+    saveBtn.Parent = frame
+    Instance.new("UICorner", saveBtn).CornerRadius = UDim.new(0, 6)
+    
+    local teleBtn = Instance.new("TextButton")
+    teleBtn.Size = UDim2.new(0, 60, 0, 25)
+    teleBtn.Position = UDim2.new(1, -70, 0.5, -12.5)
+    teleBtn.BackgroundColor3 = Color3.fromRGB(45, 90, 180)
+    teleBtn.Text = "Tele"
+    teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teleBtn.Font = Enum.Font.GothamBold
+    teleBtn.Parent = frame
+    Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
+    
+    saveBtn.MouseButton1Click:Connect(function()
         local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        
-        for _, egg in ipairs(eggs) do
-            currentEggs[egg] = true
-            local part = egg:IsA("Model") and (egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")) or egg
-            if part and hrp then
-                local dist = (hrp.Position - part.Position).Magnitude
-                
-                if not espCache[egg] then
-                    local bb = Instance.new("BillboardGui")
-                    bb.Size = UDim2.new(0, 150, 0, 40)
-                    bb.AlwaysOnTop = true
-                    bb.Adornee = part
-                    
-                    local txt = Instance.new("TextLabel")
-                    txt.Size = UDim2.new(1, 0, 1, 0)
-                    txt.BackgroundTransparency = 1
-                    txt.TextColor3 = Color3.fromRGB(255, 200, 50)
-                    txt.TextStrokeTransparency = 0
-                    txt.Font = Enum.Font.GothamBold
-                    txt.TextSize = 12
-                    txt.Parent = bb
-                    
-                    bb.Parent = EspFolder
-                    espCache[egg] = {Gui = bb, Text = txt}
-                end
-                espCache[egg].Text.Text = string.format("%s [%d m]", egg.Name, math.floor(dist))
-            end
+        if hrp then
+            Config[configKey] = hrp.CFrame
+            status.Text = title .. ": Đã Lưu"
+            status.TextColor3 = Color3.fromRGB(100, 255, 100)
         end
-        
-        -- Dọn dẹp ESP của Trứng đã biến mất
-        for egg, cache in pairs(espCache) do
-            if not currentEggs[egg] or not egg.Parent then
-                cache.Gui:Destroy()
-                espCache[egg] = nil
-            end
-        end
-    else
-        -- Nếu tắt ESP, xóa sạch cache
-        for egg, cache in pairs(espCache) do
-            cache.Gui:Destroy()
-        end
-        table.clear(espCache)
-    end
-end)
-
--- =========================================================
--- [ TAB FRUIT (TRÁI ÁC QUỶ) ]
--- =========================================================
-local FruitScrollFrame = Instance.new("ScrollingFrame")
-FruitScrollFrame.Size = UDim2.new(1, 0, 0, 200)
-FruitScrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-FruitScrollFrame.ScrollBarThickness = 4
-FruitScrollFrame.Parent = FruitTab
-
-local FruitLayout = Instance.new("UIListLayout")
-FruitLayout.SortOrder = Enum.SortOrder.LayoutOrder
-FruitLayout.Padding = UDim.new(0, 5)
-FruitLayout.Parent = FruitScrollFrame
-
-local function ScanFruitsAndUpdateUI()
-    for _, child in pairs(FruitScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then child:Destroy() end
-    end
+    end)
     
-    local foundFruits = {}
-    for _, obj in ipairs(Workspace:GetChildren()) do
-        if (obj:IsA("Tool") or obj:IsA("Model")) and string.match(obj.Name:lower(), "fruit") then
-            local part = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
-            if part then
-                table.insert(foundFruits, {Name = obj.Name, Pos = part.Position})
-            end
+    teleBtn.MouseButton1Click:Connect(function()
+        if Config[configKey] then
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = Config[configKey] end
         end
-    end
-    
-    if #foundFruits == 0 then
-        local msg = Instance.new("TextLabel")
-        msg.Size = UDim2.new(1, 0, 0, 30)
-        msg.BackgroundTransparency = 1
-        msg.Text = "Không tìm thấy Trái Ác Quỷ nào trong map."
-        msg.TextColor3 = Color3.fromRGB(200, 100, 100)
-        msg.Font = Enum.Font.Gotham
-        msg.TextSize = 13
-        msg.Parent = FruitScrollFrame
-    else
-        for _, data in ipairs(foundFruits) do
-            local itemFrame = Instance.new("Frame")
-            itemFrame.Size = UDim2.new(1, 0, 0, 45)
-            itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-            itemFrame.Parent = FruitScrollFrame
-            Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 6)
-            
-            local noteLabel = Instance.new("TextLabel")
-            noteLabel.Size = UDim2.new(0.7, 0, 1, 0)
-            noteLabel.Position = UDim2.new(0, 10, 0, 0)
-            noteLabel.BackgroundTransparency = 1
-            noteLabel.Text = "Note: Rơi Trái " .. data.Name
-            noteLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
-            noteLabel.Font = Enum.Font.GothamSemibold
-            noteLabel.TextSize = 13
-            noteLabel.TextXAlignment = Enum.TextXAlignment.Left
-            noteLabel.Parent = itemFrame
-            
-            local teleBtn = Instance.new("TextButton")
-            teleBtn.Size = UDim2.new(0, 60, 0, 30)
-            teleBtn.Position = UDim2.new(1, -70, 0.5, -15)
-            teleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
-            teleBtn.Text = "Tele"
-            teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            teleBtn.Font = Enum.Font.GothamBold
-            teleBtn.Parent = itemFrame
-            Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
-            
-            teleBtn.MouseButton1Click:Connect(function()
-                TeleportToPos(data.Pos)
-            end)
-        end
-    end
-    FruitScrollFrame.CanvasSize = UDim2.new(0, 0, 0, FruitLayout.AbsoluteContentSize.Y)
+    end)
 end
-CreateButton(FruitTab, "Quét Tìm Trái Ác Quỷ", ScanFruitsAndUpdateUI)
 
--- =========================================================
--- [ TAB TELEPORT (NPC) ]
--- =========================================================
-local NpcScrollFrame = Instance.new("ScrollingFrame")
-NpcScrollFrame.Size = UDim2.new(1, 0, 0, 200)
-NpcScrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-NpcScrollFrame.ScrollBarThickness = 4
-NpcScrollFrame.Parent = TeleportTab
+CreateCoordRow(WorldTravelTab, "Tọa Độ 1", "SavedPos1")
+CreateCoordRow(WorldTravelTab, "Tọa Độ 2", "SavedPos2")
+CreateCoordRow(WorldTravelTab, "Tọa Độ 3", "SavedPos3")
 
-local NpcLayout = Instance.new("UIListLayout")
-NpcLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NpcLayout.Padding = UDim.new(0, 5)
-NpcLayout.Parent = NpcScrollFrame
-
-local function ScanNPCsAndUpdateUI()
-    for _, child in pairs(NpcScrollFrame:GetChildren()) do
-        if child:IsA("Frame") then child:Destroy() end
-    end
-    
+CreateSection(WorldTravelTab, "Dịch Chuyển NPC")
+local NpcListContainer, NpcListLayout = CreateDropdown(WorldTravelTab, "Danh Sách NPC")
+CreateButton(WorldTravelTab, "Quét Tìm NPC", function()
+    for _, child in pairs(NpcListContainer:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
     local foundNPCs = {}
-    local npcFolders = {}
-    
-    for _, child in ipairs(Workspace:GetChildren()) do
-        local name = child.Name:lower()
-        if name == "map" or name == "mapa" then
-            for _, sub in ipairs(child:GetChildren()) do
-                if sub.Name:lower():match("npc") then
-                    table.insert(npcFolders, sub)
-                end
-            end
-        elseif name:match("npc") then
-            table.insert(npcFolders, child)
-        end
-    end
-    
-    local function addNpc(obj)
-        if obj:IsA("Model") and obj:FindFirstChild("HumanoidRootPart") then
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name:lower():match("npc") and obj:FindFirstChild("HumanoidRootPart") then
             table.insert(foundNPCs, {Name = obj.Name, Pos = obj.HumanoidRootPart.Position})
         end
     end
-    
-    if #npcFolders > 0 then
-        for _, folder in ipairs(npcFolders) do
-            for _, obj in ipairs(folder:GetChildren()) do addNpc(obj) end
-        end
-    else
-        for _, obj in ipairs(Workspace:GetChildren()) do
-            if obj:IsA("Model") and obj.Name:lower():match("npc") then addNpc(obj) end
-        end
-    end
-    
     for _, data in ipairs(foundNPCs) do
         local itemFrame = Instance.new("Frame")
-        itemFrame.Size = UDim2.new(1, 0, 0, 40)
-        itemFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-        itemFrame.Parent = NpcScrollFrame
-        Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 6)
+        itemFrame.Size = UDim2.new(1, 0, 0, 35)
+        itemFrame.BackgroundColor3 = Color3.fromRGB(35, 38, 45)
+        itemFrame.Parent = NpcListContainer
+        Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
         
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
@@ -887,250 +726,218 @@ local function ScanNPCsAndUpdateUI()
         nameLabel.BackgroundTransparency = 1
         nameLabel.Text = data.Name
         nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-        nameLabel.Font = Enum.Font.GothamSemibold
-        nameLabel.TextSize = 13
+        nameLabel.Font = Enum.Font.Gotham
+        nameLabel.TextSize = 12
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
         nameLabel.Parent = itemFrame
         
         local teleBtn = Instance.new("TextButton")
-        teleBtn.Size = UDim2.new(0, 60, 0, 30)
-        teleBtn.Position = UDim2.new(1, -70, 0.5, -15)
-        teleBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200)
+        teleBtn.Size = UDim2.new(0, 50, 0, 25)
+        teleBtn.Position = UDim2.new(1, -60, 0.5, -12.5)
+        teleBtn.BackgroundColor3 = Color3.fromRGB(45, 90, 180)
         teleBtn.Text = "Tele"
         teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
         teleBtn.Font = Enum.Font.GothamBold
         teleBtn.Parent = itemFrame
-        Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 6)
-        
-        teleBtn.MouseButton1Click:Connect(function()
-            TeleportToPos(data.Pos)
-        end)
+        Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 4)
+        teleBtn.MouseButton1Click:Connect(function() TeleportToPos(data.Pos) end)
     end
-    NpcScrollFrame.CanvasSize = UDim2.new(0, 0, 0, NpcLayout.AbsoluteContentSize.Y)
+    NpcListContainer.CanvasSize = UDim2.new(0, 0, 0, NpcListLayout.AbsoluteContentSize.Y)
+end)
+
+-- =========================================================
+-- [ TAB: EGGS & FRUITS ]
+-- =========================================================
+CreateSection(WorldItemsTab, "Trứng (Eggs)")
+local function GetEggs()
+    local eggs = {}
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if (obj:IsA("Model") or obj:IsA("BasePart")) and obj.Name:lower():match("egg") then
+            table.insert(eggs, obj)
+        end
+    end
+    return eggs
 end
-CreateButton(TeleportTab, "Quét Danh Sách NPC", ScanNPCsAndUpdateUI)
 
--- =========================================================
--- [ TAB FISHING (CÂU CÁ TỰ ĐỘNG) ]
--- =========================================================
-CreateToggle(FishingTab, "Bật/Tắt Auto Câu Cá", "AutoFishing")
+CreateToggle(WorldItemsTab, "Bật ESP Trứng (Nhìn xuyên tường)", "EggESP")
+CreateToggle(WorldItemsTab, "Auto Teleport Tới Trứng (Khi rơi)", "AutoEgg")
 
-local lastFishingCast = tick()
+local EggRarityList = {"Tất cả", "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Divine"}
+CreateButton(WorldItemsTab, "Lọc Trứng: " .. Config.SelectedEggRarity, function(btn)
+    local currentIndex = table.find(EggRarityList, Config.SelectedEggRarity) or 1
+    currentIndex = currentIndex + 1
+    if currentIndex > #EggRarityList then currentIndex = 1 end
+    Config.SelectedEggRarity = EggRarityList[currentIndex]
+    btn.Text = "Lọc Trứng: " .. Config.SelectedEggRarity
+end)
+
+CreateSection(WorldItemsTab, "Trái Ác Quỷ (Fruits)")
+local FruitListContainer, FruitListLayout = CreateDropdown(WorldItemsTab, "Trái Ác Quỷ Đang Rơi")
+CreateButton(WorldItemsTab, "Quét Tìm Trái Ác Quỷ", function()
+    for _, child in pairs(FruitListContainer:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+    local foundFruits = {}
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if (obj:IsA("Tool") or obj:IsA("Model")) and string.match(obj.Name:lower(), "fruit") then
+            local part = obj:IsA("Model") and (obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")) or obj:FindFirstChild("Handle") or obj:FindFirstChildWhichIsA("BasePart")
+            if part then table.insert(foundFruits, {Name = obj.Name, Pos = part.Position}) end
+        end
+    end
+    if #foundFruits == 0 then
+        local msg = Instance.new("TextLabel")
+        msg.Size = UDim2.new(1, 0, 0, 30); msg.BackgroundTransparency = 1; msg.Text = "Không có Trái Ác Quỷ nào trong map."
+        msg.TextColor3 = Color3.fromRGB(200, 100, 100); msg.Font = Enum.Font.Gotham; msg.TextSize = 12; msg.Parent = FruitListContainer
+    else
+        for _, data in ipairs(foundFruits) do
+            local itemFrame = Instance.new("Frame")
+            itemFrame.Size = UDim2.new(1, 0, 0, 35); itemFrame.BackgroundColor3 = Color3.fromRGB(35, 38, 45); itemFrame.Parent = FruitListContainer
+            Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(0.7, 0, 1, 0); nameLabel.Position = UDim2.new(0, 10, 0, 0); nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = data.Name; nameLabel.TextColor3 = Color3.fromRGB(255, 255, 100); nameLabel.Font = Enum.Font.GothamSemibold
+            nameLabel.TextSize = 12; nameLabel.TextXAlignment = Enum.TextXAlignment.Left; nameLabel.Parent = itemFrame
+            local teleBtn = Instance.new("TextButton")
+            teleBtn.Size = UDim2.new(0, 50, 0, 25); teleBtn.Position = UDim2.new(1, -60, 0.5, -12.5); teleBtn.BackgroundColor3 = Color3.fromRGB(45, 90, 180)
+            teleBtn.Text = "Tele"; teleBtn.TextColor3 = Color3.fromRGB(255, 255, 255); teleBtn.Font = Enum.Font.GothamBold; teleBtn.Parent = itemFrame
+            Instance.new("UICorner", teleBtn).CornerRadius = UDim.new(0, 4)
+            teleBtn.MouseButton1Click:Connect(function() TeleportToPos(data.Pos) end)
+        end
+    end
+    FruitListContainer.CanvasSize = UDim2.new(0, 0, 0, FruitListLayout.AbsoluteContentSize.Y)
+end)
+
+-- [ ESP TRỨNG (Chống Lag) ]
+local EspFolder = Instance.new("Folder", targetParent)
+EspFolder.Name = "YuiHuB_EggESP"
+local espCache = {}
 SafeConnect(RunService.Heartbeat, function()
-    if Config.AutoFishing then
-        local char = LocalPlayer.Character
-        local bp = LocalPlayer:FindFirstChild("Backpack")
-        if not char then return end
-        
-        local rod = nil
-        for _, tool in ipairs(char:GetChildren()) do
-            if tool:IsA("Tool") and tool.Name:lower():match("rod$") then
-                rod = tool
-                break
+    if Config.EggESP then
+        local eggs = GetEggs()
+        local currentEggs = {}
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        for _, egg in ipairs(eggs) do
+            currentEggs[egg] = true
+            local part = egg:IsA("Model") and (egg.PrimaryPart or egg:FindFirstChildWhichIsA("BasePart")) or egg
+            if part and hrp then
+                local dist = (hrp.Position - part.Position).Magnitude
+                if not espCache[egg] then
+                    local bb = Instance.new("BillboardGui")
+                    bb.Size = UDim2.new(0, 150, 0, 40); bb.AlwaysOnTop = true; bb.Adornee = part
+                    local txt = Instance.new("TextLabel")
+                    txt.Size = UDim2.new(1, 0, 1, 0); txt.BackgroundTransparency = 1; txt.TextColor3 = Color3.fromRGB(255, 200, 50)
+                    txt.TextStrokeTransparency = 0; txt.Font = Enum.Font.GothamBold; txt.TextSize = 12; txt.Parent = bb; bb.Parent = EspFolder
+                    espCache[egg] = {Gui = bb, Text = txt}
+                end
+                espCache[egg].Text.Text = string.format("%s [%d m]", egg.Name, math.floor(dist))
             end
         end
-        if not rod and bp then
-            for _, tool in ipairs(bp:GetChildren()) do
-                if tool:IsA("Tool") and tool.Name:lower():match("rod$") then
-                    rod = tool
-                    break
-                end
-            end
+        for egg, cache in pairs(espCache) do
+            if not currentEggs[egg] or not egg.Parent then cache.Gui:Destroy(); espCache[egg] = nil end
         end
-        
-        if rod then
-            if rod.Parent ~= char then
-                for _, t in ipairs(char:GetChildren()) do
-                    if t:IsA("Tool") then t.Parent = bp end
-                end
-                rod.Parent = char
-            end
-            
-            local isCast = false
-            local tip = rod:FindFirstChild("Tip")
-            if tip then
-                local att = tip:FindFirstChild("TipAttachment") or tip:FindFirstChildWhichIsA("Attachment")
-                if att then
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint") then
-                            if obj.Attachment0 == att or obj.Attachment1 == att then
-                                isCast = true
-                                break
-                            end
-                        end
-                    end
-                    if not isCast then
-                        for _, obj in ipairs(rod:GetDescendants()) do
-                            if obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint") then
-                                if obj.Attachment0 == att or obj.Attachment1 == att then
-                                    isCast = true
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-                if not isCast then
-                    for _, c in ipairs(tip:GetChildren()) do
-                        if c.Name:lower():match("bobber") or c:IsA("RopeConstraint") or c:IsA("Beam") then
-                            isCast = true
-                            break
-                        end
-                    end
-                end
-            end
-            
-            if not isCast then
-                if tick() - lastFishingCast > 3 then
-                    lastFishingCast = tick()
-                    rod:Activate()
-                    pcall(function()
-                        local center = Camera.ViewportSize / 2
-                        VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, true, game, 0)
-                        task.wait(0.05)
-                        VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, false, game, 0)
-                    end)
-                end
-            end
-        end
+    else
+        for egg, cache in pairs(espCache) do cache.Gui:Destroy() end
+        table.clear(espCache)
     end
 end)
 
--- [ XÂY DỰNG TAB: PLAYER ]
-CreateToggle(PlayerTab, "Bật WalkSpeed", "WalkSpeedEnabled")
-CreateSlider(PlayerTab, "Tốc độ chạy", 16, 300, 50, "WalkSpeed", false)
-CreateToggle(PlayerTab, "Bật JumpPower", "JumpPowerEnabled")
-CreateSlider(PlayerTab, "Độ cao nhảy", 50, 500, 100, "JumpPower", false)
-CreateToggle(PlayerTab, "Nhảy vô hạn (Inf Jump)", "InfJump")
-CreateToggle(PlayerTab, "Đi xuyên tường (Noclip)", "Noclip")
-CreateToggle(PlayerTab, "Đi trên mặt nước", "WalkOnWater")
-CreateToggle(PlayerTab, "Bay tự do (Fly)", "Fly")
-CreateSlider(PlayerTab, "Tốc độ Bay", 16, 500, 50, "FlySpeed", false)
+-- =========================================================
+-- [ TAB: PLAYER MODS & FISHING ]
+-- =========================================================
+CreateSection(PlayerTab, "Cài Đặt Nhân Vật")
+CreateToggle(PlayerTab, "Bật Tốc Độ Chạy", "WalkSpeedEnabled")
+CreateSlider(PlayerTab, "Tốc Độ", 16, 300, 50, "WalkSpeed", false)
+CreateToggle(PlayerTab, "Bật Sức Bật (Nhảy cao)", "JumpPowerEnabled")
+CreateSlider(PlayerTab, "Sức Bật", 50, 500, 100, "JumpPower", false)
+CreateToggle(PlayerTab, "Nhảy Vô Hạn (Inf Jump)", "InfJump")
+CreateToggle(PlayerTab, "Xuyên Tường (Noclip)", "Noclip")
+CreateToggle(PlayerTab, "Đi Trên Mặt Nước", "WalkOnWater")
+CreateToggle(PlayerTab, "Bay Tự Do (Fly)", "Fly")
+CreateSlider(PlayerTab, "Tốc Độ Bay", 16, 500, 50, "FlySpeed", false)
 
--- [ XÂY DỰNG TAB: SETTING ]
-CreateButton(SettingTab, "Chế độ di chuyển: " .. Config.MovementMode, function(btn)
+CreateSection(FishingTab, "Cài Đặt Câu Cá")
+CreateToggle(FishingTab, "Bật Auto Câu Cá", "AutoFishing")
+
+-- =========================================================
+-- [ TAB: SETTINGS ]
+-- =========================================================
+CreateSection(SettingsTab, "Hệ Thống Di Chuyển")
+CreateButton(SettingsTab, "Chế Độ Di Chuyển: " .. Config.MovementMode, function(btn)
     Config.MovementMode = (Config.MovementMode == "Tween") and "Teleport" or "Tween"
-    btn.Text = "Chế độ di chuyển: " .. Config.MovementMode
+    btn.Text = "Chế Độ Di Chuyển: " .. Config.MovementMode
 end)
 
-local PosTitle = Instance.new("TextLabel")
-PosTitle.Size = UDim2.new(1, 0, 0, 20)
-PosTitle.BackgroundTransparency = 1
-PosTitle.Text = "Kiểu đánh:"
-PosTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
-PosTitle.Font = Enum.Font.Gotham
-PosTitle.TextSize = 14
-PosTitle.TextXAlignment = Enum.TextXAlignment.Left
-PosTitle.Parent = SettingTab
+local PosLbl = Instance.new("TextLabel")
+PosLbl.Size = UDim2.new(1, 0, 0, 25); PosLbl.BackgroundTransparency = 1; PosLbl.Text = "Vị trí Đánh Quái/Boss:"
+PosLbl.TextColor3 = Color3.fromRGB(200, 200, 210); PosLbl.Font = Enum.Font.GothamSemibold; PosLbl.TextSize = 13
+PosLbl.TextXAlignment = Enum.TextXAlignment.Left; PosLbl.Parent = SettingsTab
 
 local PosContainer = Instance.new("Frame")
-PosContainer.Size = UDim2.new(1, 0, 0, 80)
-PosContainer.BackgroundTransparency = 1
-PosContainer.Parent = SettingTab
-
+PosContainer.Size = UDim2.new(1, 0, 0, 45); PosContainer.BackgroundTransparency = 1; PosContainer.Parent = SettingsTab
 local PosGrid = Instance.new("UIGridLayout")
-PosGrid.CellSize = UDim2.new(0.48, 0, 0, 35)
-PosGrid.CellPadding = UDim2.new(0.04, 0, 0, 10)
-PosGrid.Parent = PosContainer
+PosGrid.CellSize = UDim2.new(0.23, 0, 0, 35); PosGrid.CellPadding = UDim2.new(0.02, 0, 0, 0); PosGrid.Parent = PosContainer
 
 local PositionsList = {"Trên đầu", "Đằng sau", "Đằng trước", "Dưới chân"}
 local posButtons = {}
-
 for _, posName in ipairs(PositionsList) do
     local btn = Instance.new("TextButton")
-    btn.BackgroundColor3 = (Config.FarmPosition == posName) and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(30, 30, 35)
-    btn.Text = posName
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.Gotham
-    btn.TextSize = 13
-    btn.Parent = PosContainer
+    btn.BackgroundColor3 = (Config.FarmPosition == posName) and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(35, 38, 45)
+    btn.Text = posName; btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.Gotham; btn.TextSize = 11; btn.Parent = PosContainer
     Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     posButtons[posName] = btn
-    
     btn.MouseButton1Click:Connect(function()
         Config.FarmPosition = posName
-        for n, b in pairs(posButtons) do
-            b.BackgroundColor3 = (n == posName) and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(30, 30, 35)
-        end
+        for n, b in pairs(posButtons) do b.BackgroundColor3 = (n == posName) and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(35, 38, 45) end
     end)
 end
 
-CreateSlider(SettingTab, "Khoảng cách đánh", 0, 50, 5, "Distance", false)
-CreateSlider(SettingTab, "Tốc độ Tween (giây)", 0.1, 10, 0.5, "TweenDuration", true)
-CreateToggle(SettingTab, "Bật Auto Attack Thường", "AutoAttack")
-CreateToggle(SettingTab, "Bật FAST ATTACK (Siêu nhanh)", "FastAttack")
+CreateSlider(SettingsTab, "Khoảng Cách Đánh", 0, 50, 5, "Distance", false)
+CreateSlider(SettingsTab, "Tốc Độ Tween (s)", 0.1, 10, 0.5, "TweenDuration", true)
+CreateSection(SettingsTab, "Cài Đặt Vũ Khí")
+CreateToggle(SettingsTab, "Auto Click Thường", "AutoAttack")
+CreateToggle(SettingsTab, "FAST ATTACK (Siêu nhanh)", "FastAttack")
 
-CreateButton(SettingTab, "Quét Vũ Khí (Chọn nhiều cái)", function() UpdateWeaponList() end)
-
-local WeaponListContainer, WeaponListLayout = CreateDropdown(SettingTab, "Danh Sách Vũ Khí")
-
-function UpdateWeaponList()
-    for _, child in pairs(WeaponListContainer:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    
+local WeaponListContainer, WeaponListLayout = CreateDropdown(SettingsTab, "Chọn Vũ Khí Để Farm")
+CreateButton(SettingsTab, "Quét Cập Nhật Vũ Khí", function()
+    for _, child in pairs(WeaponListContainer:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     local tools = {}
-    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-        if tool:IsA("Tool") then tools[tool.Name] = tool end
-    end
+    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do if tool:IsA("Tool") then tools[tool.Name] = tool end end
     if LocalPlayer.Character then
-        for _, tool in pairs(LocalPlayer.Character:GetChildren()) do
-            if tool:IsA("Tool") then tools[tool.Name] = tool end
-        end
+        for _, tool in pairs(LocalPlayer.Character:GetChildren()) do if tool:IsA("Tool") then tools[tool.Name] = tool end end
     end
-    
     for toolName, _ in pairs(tools) do
         local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 0, 30)
-        btn.BackgroundColor3 = Config.SelectedWeapons[toolName] and Color3.fromRGB(0, 150, 80) or Color3.fromRGB(40, 40, 45)
-        btn.Text = " " .. toolName
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 13
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.Parent = WeaponListContainer
-        
+        btn.Size = UDim2.new(1, 0, 0, 30); btn.BackgroundColor3 = Config.SelectedWeapons[toolName] and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(35, 38, 45)
+        btn.Text = "   " .. toolName; btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.Gotham; btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left; btn.Parent = WeaponListContainer
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
         btn.MouseButton1Click:Connect(function()
             if Config.SelectedWeapons[toolName] then
-                Config.SelectedWeapons[toolName] = nil
-                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+                Config.SelectedWeapons[toolName] = nil; btn.BackgroundColor3 = Color3.fromRGB(35, 38, 45)
             else
-                Config.SelectedWeapons[toolName] = true
-                btn.BackgroundColor3 = Color3.fromRGB(0, 150, 80)
+                Config.SelectedWeapons[toolName] = true; btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
             end
         end)
     end
     WeaponListContainer.CanvasSize = UDim2.new(0, 0, 0, WeaponListLayout.AbsoluteContentSize.Y)
-end
-
-SwitchTab("Main")
-
--- [ ANIMATION MỞ / ĐÓNG MENU ]
-ToggleButton.MouseButton1Click:Connect(function()
-    Config.MenuOpen = not Config.MenuOpen
-    local info = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-    if Config.MenuOpen then
-        ToggleLabel.Text = "ĐÓNG"
-        ToggleLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-        TweenService:Create(MainFrame, info, {Size = UDim2.new(0, 500, 0, 380)}):Play()
-    else
-        ToggleLabel.Text = "MỞ"
-        ToggleLabel.TextColor3 = Color3.fromRGB(0, 255, 128)
-        TweenService:Create(MainFrame, info, {Size = UDim2.new(0, 0, 0, 0)}):Play()
-    end
 end)
 
--- [ LOGIC TÌM MỤC TIÊU & AUTO FARM ]
+-- Khởi tạo mặc định Tab đầu tiên
+SwitchTab("Overview")
+
+-- [ TOGGLE HIDE / SHOW UI ]
+ToggleButton.MouseButton1Click:Connect(function()
+    Config.MenuOpen = not Config.MenuOpen
+    MainFrame.Visible = Config.MenuOpen
+end)
+
+-- =========================================================
+-- [ VÒNG LẶP LOGIC CHÍNH: CORE FARMING SYSTEM ]
+-- =========================================================
 local function GetOffsetCFrame(baseCFrame)
     local dist = Config.Distance
-    if Config.FarmPosition == "Trên đầu" then 
-        return baseCFrame * CFrame.new(0, dist, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-    elseif Config.FarmPosition == "Đằng sau" then 
-        return baseCFrame * CFrame.new(0, 0, dist)
-    elseif Config.FarmPosition == "Đằng trước" then 
-        return baseCFrame * CFrame.new(0, 0, -dist)
-    elseif Config.FarmPosition == "Dưới chân" then 
-        return baseCFrame * CFrame.new(0, -dist, 0) * CFrame.Angles(math.rad(90), 0, 0)
+    if Config.FarmPosition == "Trên đầu" then return baseCFrame * CFrame.new(0, dist, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+    elseif Config.FarmPosition == "Đằng sau" then return baseCFrame * CFrame.new(0, 0, dist)
+    elseif Config.FarmPosition == "Đằng trước" then return baseCFrame * CFrame.new(0, 0, -dist)
+    elseif Config.FarmPosition == "Dưới chân" then return baseCFrame * CFrame.new(0, -dist, 0) * CFrame.Angles(math.rad(90), 0, 0)
     end
     return baseCFrame * CFrame.new(0, dist, 0)
 end
@@ -1154,6 +961,11 @@ local function FindMobInWorkspace(name, requireAlive)
     return nil
 end
 
+local function GetMobLevel(mobName)
+    local level = mobName:match("%d+")
+    return level and tonumber(level) or 1
+end
+
 local function GetBestMobTarget()
     local bestTarget = nil
     local highestLevel = -1
@@ -1168,16 +980,10 @@ local function GetBestMobTarget()
                 if Config.SelectedMobs[obj.Name] and not string.match(obj.Name:lower(), "boss$") then
                     local level = GetMobLevel(obj.Name)
                     local dist = (obj.HumanoidRootPart.Position - myPos).Magnitude
-                    
                     if level > highestLevel then
-                        highestLevel = level
-                        shortestDist = dist
-                        bestTarget = obj
+                        highestLevel = level; shortestDist = dist; bestTarget = obj
                     elseif level == highestLevel then
-                        if dist < shortestDist then
-                            shortestDist = dist
-                            bestTarget = obj
-                        end
+                        if dist < shortestDist then shortestDist = dist; bestTarget = obj end
                     end
                 end
             end
@@ -1218,30 +1024,23 @@ local function EquipWeaponsFast()
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
     if not char or not backpack then return end
-    
     for toolName, _ in pairs(Config.SelectedWeapons) do
         local toolInBp = backpack:FindFirstChild(toolName)
-        if toolInBp then
-            toolInBp.Parent = char
-        end
+        if toolInBp then toolInBp.Parent = char end
     end
 end
 
 SafeConnect(RunService.RenderStepped, function()
     if not LocalPlayer.Character then return end
-    
     if Config.FastAttack or Config.AutoAttack then
         EquipWeaponsFast() 
-        
         local tools = LocalPlayer.Character:GetChildren()
         for i = 1, #tools do
             local tool = tools[i]
             if tool:IsA("Tool") then
                 if Config.FastAttack then
                     for j = 1, 3 do tool:Activate() end 
-                else
-                    tool:Activate()
-                end
+                else tool:Activate() end
             end
         end
     end
@@ -1252,16 +1051,26 @@ SafeConnect(RunService.Heartbeat, function()
     if tick() - lastSkillTime > 0.5 then
         lastSkillTime = tick()
         if activelyFarming and (Config.AutoFarm or Config.AutoBoss) then
-            if Config.AutoSkillZ then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Z, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Z, false, game) end
-            if Config.AutoSkillX then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.X, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.X, false, game) end
-            if Config.AutoSkillC then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.C, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.C, false, game) end
-            if Config.AutoSkillV then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.V, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.V, false, game) end
-            if Config.AutoSkillE then VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game) end
+            local keys = {}
+            if Config.AutoSkillZ then table.insert(keys, Enum.KeyCode.Z) end
+            if Config.AutoSkillX then table.insert(keys, Enum.KeyCode.X) end
+            if Config.AutoSkillC then table.insert(keys, Enum.KeyCode.C) end
+            if Config.AutoSkillV then table.insert(keys, Enum.KeyCode.V) end
+            if Config.AutoSkillB then table.insert(keys, Enum.KeyCode.B) end
+            if Config.AutoSkillN then table.insert(keys, Enum.KeyCode.N) end
+            if Config.AutoSkillE then table.insert(keys, Enum.KeyCode.E) end
+            if Config.AutoSkillF then table.insert(keys, Enum.KeyCode.F) end
+            if Config.AutoSkillT then table.insert(keys, Enum.KeyCode.T) end
+            if Config.AutoSkillJ then table.insert(keys, Enum.KeyCode.J) end
+            
+            for _, key in ipairs(keys) do
+                VirtualInputManager:SendKeyEvent(true, key, false, game)
+                VirtualInputManager:SendKeyEvent(false, key, false, game)
+            end
         end
     end
 end)
 
--- [ VÒNG LẶP DI CHUYỂN CHÍNH ]
 SafeConnect(RunService.Heartbeat, function()
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then activelyFarming = false; return end
@@ -1297,14 +1106,12 @@ SafeConnect(RunService.Heartbeat, function()
         return
     end
     
-    -- V7 AUTO TELEPORT EGG
     if Config.AutoEgg then
         local eggs = GetEggs()
         local targetEgg = nil
         for _, egg in ipairs(eggs) do
             if Config.SelectedEggRarity == "Tất cả" or string.match(egg.Name:lower(), Config.SelectedEggRarity:lower()) then
-                targetEgg = egg
-                break
+                targetEgg = egg; break
             end
         end
         if targetEgg then
@@ -1312,7 +1119,6 @@ SafeConnect(RunService.Heartbeat, function()
             if part then
                 activelyFarming = true
                 if humanoid then humanoid:ChangeState(11) end
-                -- Bay thẳng đến ngay sát trên đỉnh trứng
                 TeleportTo(part.CFrame * CFrame.new(0, 3, 0))
                 return
             end
@@ -1331,8 +1137,7 @@ SafeConnect(RunService.Heartbeat, function()
             local roamingTargetPos = nil
             for selectedMob, _ in pairs(Config.SelectedMobs) do
                 if Config.MobDataCache[selectedMob] then
-                    roamingTargetPos = Config.MobDataCache[selectedMob]
-                    break
+                    roamingTargetPos = Config.MobDataCache[selectedMob]; break
                 end
             end
             if roamingTargetPos then
@@ -1367,13 +1172,10 @@ SafeConnect(RunService.Heartbeat, function()
     activelyFarming = false
 end)
 
--- [ PLAYER TAB FEATURES ]
+-- [ PLAYER TAB MODS ]
 local flyBv, flyBg
 local waterPlatform = Instance.new("Part")
-waterPlatform.Size = Vector3.new(8, 1, 8)
-waterPlatform.Transparency = 1
-waterPlatform.Anchored = true
-waterPlatform.CanCollide = true
+waterPlatform.Size = Vector3.new(8, 1, 8); waterPlatform.Transparency = 1; waterPlatform.Anchored = true; waterPlatform.CanCollide = true
 waterPlatform.Name = "AutoWaterPlatform"
 
 SafeConnect(RunService.Stepped, function()
@@ -1388,13 +1190,8 @@ SafeConnect(RunService.Stepped, function()
         
         if Config.Fly and hrp and not activelyFarming then
             if not flyBv or not flyBv.Parent then
-                flyBv = Instance.new("BodyVelocity")
-                flyBv.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                flyBv.Parent = hrp
-                flyBg = Instance.new("BodyGyro")
-                flyBg.P = 9e4
-                flyBg.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                flyBg.Parent = hrp
+                flyBv = Instance.new("BodyVelocity"); flyBv.MaxForce = Vector3.new(9e9, 9e9, 9e9); flyBv.Parent = hrp
+                flyBg = Instance.new("BodyGyro"); flyBg.P = 9e4; flyBg.MaxTorque = Vector3.new(9e9, 9e9, 9e9); flyBg.Parent = hrp
             end
             hum.PlatformStand = true
             local moveDir = Vector3.new(0, 0, 0)
@@ -1414,9 +1211,7 @@ SafeConnect(RunService.Stepped, function()
         
         if Config.Noclip and not activelyFarming then
             for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
-                    part.CanCollide = false
-                end
+                if part:IsA("BasePart") and part.CanCollide then part.CanCollide = false end
             end
         end
         
@@ -1425,11 +1220,8 @@ SafeConnect(RunService.Stepped, function()
             local ray = Ray.new(hrp.Position, Vector3.new(0, -6, 0))
             local hit, pos, norm, mat = workspace:FindPartOnRay(ray, char)
             if mat == Enum.Material.Water then
-                waterPlatform.Position = Vector3.new(hrp.Position.X, pos.Y - 0.5, hrp.Position.Z)
-                waterPlatform.Parent = workspace
-            else
-                waterPlatform.Parent = nil
-            end
+                waterPlatform.Position = Vector3.new(hrp.Position.X, pos.Y - 0.5, hrp.Position.Z); waterPlatform.Parent = workspace
+            else waterPlatform.Parent = nil end
         else
             waterPlatform.Parent = nil
             if hum then hum:SetStateEnabled(Enum.HumanoidStateType.Swimming, true) end
@@ -1440,8 +1232,54 @@ end)
 SafeConnect(UserInputService.JumpRequest, function()
     if Config.InfJump then
         local char = LocalPlayer.Character
-        if char and char:FindFirstChild("Humanoid") then
-            char.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        if char and char:FindFirstChild("Humanoid") then char.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+local lastFishingCast = tick()
+SafeConnect(RunService.Heartbeat, function()
+    if Config.AutoFishing then
+        local char = LocalPlayer.Character
+        local bp = LocalPlayer:FindFirstChild("Backpack")
+        if not char then return end
+        
+        local rod = nil
+        for _, tool in ipairs(char:GetChildren()) do if tool:IsA("Tool") and tool.Name:lower():match("rod$") then rod = tool; break end end
+        if not rod and bp then
+            for _, tool in ipairs(bp:GetChildren()) do if tool:IsA("Tool") and tool.Name:lower():match("rod$") then rod = tool; break end end
+        end
+        
+        if rod then
+            if rod.Parent ~= char then
+                for _, t in ipairs(char:GetChildren()) do if t:IsA("Tool") then t.Parent = bp end end
+                rod.Parent = char
+            end
+            
+            local isCast = false
+            local tip = rod:FindFirstChild("Tip")
+            if tip then
+                local att = tip:FindFirstChild("TipAttachment") or tip:FindFirstChildWhichIsA("Attachment")
+                if att then
+                    for _, obj in ipairs(workspace:GetDescendants()) do
+                        if (obj:IsA("Constraint") or obj:IsA("Beam") or obj:IsA("RopeConstraint")) and (obj.Attachment0 == att or obj.Attachment1 == att) then
+                            isCast = true; break
+                        end
+                    end
+                end
+            end
+            
+            if not isCast then
+                if tick() - lastFishingCast > 3 then
+                    lastFishingCast = tick()
+                    rod:Activate()
+                    pcall(function()
+                        local center = Camera.ViewportSize / 2
+                        VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, true, game, 0)
+                        task.wait(0.05)
+                        VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + 50, 0, false, game, 0)
+                    end)
+                end
+            end
         end
     end
 end)
@@ -1452,4 +1290,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("Rise Piece Superior Auto Farm V7 Loaded successfully! (Egg Scanner, Egg ESP, Filtered Auto Egg Teleport Added)")
+print("YuiHuB Premium Auto Farm - Successfully Loaded! (All Features Active)")
