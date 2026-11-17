@@ -1,8 +1,8 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V15 FULL]
+-- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V16 FULL]
 -- Giao diện thu gọn Mobile (600x380). Giữ nguyên 100% cấu trúc dài gốc.
 -- Tuyệt đối không gộp dòng, không cắt xén. Hiệu năng mượt mà tuyệt đối.
--- [V15 FIX]: Lọc Triệt Để NPC/Shop bằng Tên, ProximityPrompt, Dialog.
+-- [V16 UPDATE]: Thêm mục Trang Bị Nhiều Vũ Khí Cùng Lúc (Đa Vũ Khí).
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -76,6 +76,10 @@ local Config = {
     WeaponSlot4 = "None", Delay4 = 5,
     WeaponSlot5 = "None", Delay5 = 5,
     
+    -- HỆ THỐNG TRANG BỊ NHIỀU VŨ KHÍ CÙNG LÚC MỚI (V16)
+    EquipMultipleWeapons = false,
+    MultiSelectedWeapons = {},
+    
     SelectedMobs = {}, 
     SelectedBosses = {},
     MobListCache = {}, 
@@ -108,7 +112,7 @@ local activelyFarming = false
 -- =====================================================================
 -- [ UI LIBRARY: YUIHUB MOBILE OPTIMIZED (MARU STYLE) ]
 -- =====================================================================
-local UI_NAME = "YuiHuB_Mobile_FullSource_V15"
+local UI_NAME = "YuiHuB_Mobile_FullSource_V16"
 local targetParent = nil
 
 pcall(function()
@@ -714,7 +718,7 @@ local function CreateDropdown(parent, titleText)
 end
 
 -- =====================================================================
--- [ BỘ LỌC TÌM KIẾM QUÁI & BOSS (LỌC NPC CỰC KỲ KHẮT KHE) ]
+-- [ BỘ LỌC TÌM KIẾM THÔNG MINH CHO BOSS / QUÁI / NPC ]
 -- =====================================================================
 local function TeleportToPos(pos)
     local char = LocalPlayer.Character
@@ -794,7 +798,7 @@ local InfoLbl = Instance.new("TextLabel")
 InfoLbl.Size = UDim2.new(1, -16, 0, 95)
 InfoLbl.Position = UDim2.new(0, 8, 0, 0)
 InfoLbl.BackgroundTransparency = 1
-InfoLbl.Text = "- FULL SOURCE CODE. KHÔNG RÚT GỌN.\n- Lọc NPC/Shop triệt để bằng ProximityPrompt.\n- Gộp chung danh sách Quái & Boss làm 1.\n- Có 5 Slot Vũ Khí kèm 5 Thanh Delay riêng.\n- Fast Attack KHÔNG DELAY."
+InfoLbl.Text = "- FULL SOURCE CODE V16. KHÔNG RÚT GỌN.\n- THÊM MỚI: Trang Bị Đa Vũ Khí Cùng Lúc.\n- Lọc NPC/Shop triệt để bằng ProximityPrompt.\n- Gộp chung danh sách Quái & Boss làm 1.\n- Có 5 Slot Vũ Khí kèm 5 Thanh Delay riêng.\n- Fast Attack KHÔNG DELAY."
 InfoLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 InfoLbl.Font = Enum.Font.Gotham
 InfoLbl.TextSize = 10
@@ -883,7 +887,7 @@ CreateToggle(SkillContainer, "Auto Skill J", "AutoSkillJ")
 SkillContainer.CanvasSize = UDim2.new(0, 0, 0, 320)
 
 -- =========================================================
--- [ TAB: SETTINGS (CHUNG & AUTO ĐỔI VŨ KHÍ 5 SLOT) ]
+-- [ TAB: SETTINGS (CHUNG & AUTO ĐỔI VŨ KHÍ 5 SLOT & MULTI WEAPONS) ]
 -- =========================================================
 local SettingCard = CreateCard(SettingsLeft, "Cài Đặt Đánh Chung")
 CreateButton(SettingCard, "Đổi Mode: " .. Config.MovementMode, function(btn)
@@ -957,7 +961,7 @@ for i = 1, 5 do
     SlotWraps[i] = dpWrap
 end
 
-CreateButton(WeaponCard, "Quét Làm Mới Balo", function()
+CreateButton(WeaponCard, "Quét Làm Mới Balo (5 Slot)", function()
     -- Xóa các nút cũ trong 5 Slot
     for i = 1, 5 do
         for _, child in pairs(SlotDropdowns[i]:GetChildren()) do
@@ -1038,6 +1042,74 @@ CreateButton(WeaponCard, "Quét Làm Mới Balo", function()
     end
 end)
 
+-- =========================================================
+-- [ TÍNH NĂNG MỚI (V16): CẦM ĐỒNG THỜI ĐA VŨ KHÍ CÙNG LÚC ]
+-- =========================================================
+local MultiWepCard = CreateCard(SettingsRight, "Cầm Cùng Lúc Đa Vũ Khí")
+CreateToggle(MultiWepCard, "Bật Cầm Nhiều Vũ Khí Cùng Lúc", "EquipMultipleWeapons")
+
+local MultiWepContainer, MultiWepLayout, MultiWepWrap = CreateDropdown(MultiWepCard, "Chọn Các Vũ Khí Muốn Cầm Chung")
+
+CreateButton(MultiWepCard, "Quét Balo Cầm Đa Vũ Khí", function()
+    for _, child in pairs(MultiWepContainer:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    local tools = {}
+    local backpack = LocalPlayer.Backpack
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                tools[tool.Name] = tool
+            end
+        end
+    end
+    
+    local char = LocalPlayer.Character
+    if char then
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") then
+                tools[tool.Name] = tool
+            end
+        end
+    end
+    
+    for toolName, _ in pairs(tools) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, -4, 0, 22)
+        
+        if Config.MultiSelectedWeapons[toolName] then
+            btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+        end
+        
+        btn.Text = "  " .. toolName
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 10
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.Parent = MultiWepContainer
+        
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 4)
+        btnCorner.Parent = btn
+        
+        btn.MouseButton1Click:Connect(function()
+            if Config.MultiSelectedWeapons[toolName] then
+                Config.MultiSelectedWeapons[toolName] = nil
+                btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
+            else
+                Config.MultiSelectedWeapons[toolName] = true
+                btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
+            end
+        end)
+    end
+    
+    MultiWepContainer.CanvasSize = UDim2.new(0, 0, 0, MultiWepLayout.AbsoluteContentSize.Y)
+end)
 
 -- =========================================================
 -- [ TAB: BOSSES ]
@@ -1527,6 +1599,7 @@ local currentWeaponSlot = 1
 
 SafeConnect(RunService.Heartbeat, function()
     if not Config.AutoSwapWeapons then return end
+    if Config.EquipMultipleWeapons then return end -- Nếu đang dùng Đa Vũ Khí thì bỏ qua Swap
     
     local currentTime = tick()
     local currentDelay = Config["Delay"..currentWeaponSlot]
@@ -1689,18 +1762,40 @@ local function TeleportTo(targetCFrame)
     end
 end
 
--- Fixed: Chỉ Equip Slot 1 lúc đầu nếu tính năng Đổi 5 Slot ĐANG BẬT
+-- =========================================================
+-- [ CƠ CHẾ EQUIP WEAPONS ĐƯỢC CẬP NHẬT CHO ĐA VŨ KHÍ (V16) ]
+-- =========================================================
 local function EquipWeaponsFast()
-    if Config.AutoSwapWeapons then return end
-    
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not char or not backpack then return end
     
-    if not char or not backpack then
+    -- ƯU TIÊN 1: CẦM NHIỀU VŨ KHÍ CÙNG LÚC
+    if Config.EquipMultipleWeapons then
+        -- Cất đi những tool KHÔNG nằm trong danh sách Đa Vũ Khí
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") and not Config.MultiSelectedWeapons[tool.Name] then
+                tool.Parent = backpack
+            end
+        end
+        -- Cầm tất cả tool ĐÃ CHỌN lên tay
+        for wName, isSelected in pairs(Config.MultiSelectedWeapons) do
+            if isSelected then
+                local tBp = backpack:FindFirstChild(wName)
+                if tBp then
+                    tBp.Parent = char
+                end
+            end
+        end
+        return -- Kết thúc, không chạy Auto Swap hay Default nữa
+    end
+    
+    -- ƯU TIÊN 2: AUTO SWAP 5 SLOT (Logic đã có riêng)
+    if Config.AutoSwapWeapons then
         return
     end
     
-    -- Mặc vũ khí ở Slot 1 nếu Auto Swap bị tắt
+    -- MẶC ĐỊNH: Nếu cả 2 cái trên đều tắt, cầm vũ khí ở Slot 1
     local primaryWeapon = Config.WeaponSlot1
     if primaryWeapon ~= "" and primaryWeapon ~= "None" then
         for _, tool in ipairs(char:GetChildren()) do
@@ -1724,9 +1819,7 @@ SafeConnect(RunService.RenderStepped, function()
     if not char then return end
     
     if Config.FastAttack or Config.AutoAttack then
-        if not Config.AutoSwapWeapons then
-            EquipWeaponsFast() 
-        end
+        EquipWeaponsFast() 
         
         local children = char:GetChildren()
         for i = 1, #children do
@@ -2169,4 +2262,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("YuiHuB Mobile V14 Loaded - 100% UNCOMPRESSED SOURCE CODE - ALL FIXES APPLIED!")
+print("YuiHuB Mobile V16 Loaded - 100% UNCOMPRESSED SOURCE CODE - ALL REQUESTS COMPLETED!")
