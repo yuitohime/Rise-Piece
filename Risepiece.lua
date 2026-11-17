@@ -1,9 +1,8 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V14 FULL]
+-- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V15 FULL]
 -- Giao diện thu gọn Mobile (600x380). Giữ nguyên 100% cấu trúc dài gốc.
 -- Tuyệt đối không gộp dòng, không cắt xén. Hiệu năng mượt mà tuyệt đối.
--- [V14 UPDATE]: Đổi Vũ Khí 5 Slot có Delay riêng, Fast Attack Max Speed, 
--- Gộp chung quét Quái và Boss (Cả 2 như 1 - Quét chuẩn V7 gốc).
+-- [V15 FIX]: Lọc Triệt Để NPC/Shop bằng Tên, ProximityPrompt, Dialog.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -39,7 +38,7 @@ local function DisconnectAll()
     table.clear(RuntimeConnections)
 end
 
--- [ CẤU HÌNH BIẾN TOÀN CỤC BẢN GỐC KẾT HỢP BẢN MỚI ]
+-- [ CẤU HÌNH BIẾN TOÀN CỤC ]
 local Config = {
     AutoFarm = false,
     AutoBoss = false,
@@ -109,7 +108,7 @@ local activelyFarming = false
 -- =====================================================================
 -- [ UI LIBRARY: YUIHUB MOBILE OPTIMIZED (MARU STYLE) ]
 -- =====================================================================
-local UI_NAME = "YuiHuB_Mobile_FullSource_V14"
+local UI_NAME = "YuiHuB_Mobile_FullSource_V15"
 local targetParent = nil
 
 pcall(function()
@@ -715,7 +714,7 @@ local function CreateDropdown(parent, titleText)
 end
 
 -- =====================================================================
--- [ BỘ LỌC TÌM KIẾM QUÁI & BOSS (CẢ 2 NHƯ 1 - V7 GỐC) ]
+-- [ BỘ LỌC TÌM KIẾM QUÁI & BOSS (LỌC NPC CỰC KỲ KHẮT KHE) ]
 -- =====================================================================
 local function TeleportToPos(pos)
     local char = LocalPlayer.Character
@@ -733,13 +732,34 @@ local function IsAlive(mob)
     return false
 end
 
--- QUÉT CHUẨN: Đưa TẤT CẢ mục tiêu quét được vào chung danh sách Quái và Boss
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
         if string.match(lowerName, "^spawnner") or string.match(lowerName, "^spawner") then return end
         
-        -- Cho vào cả 2 như 1 (Mob và Boss đều dùng chung DataCache)
+        -- BỘ LỌC SIÊU VIỆT: LOẠI BỎ NPC / SHOP 100%
+        local isNPC = false
+        
+        -- 1. Lọc theo tên phổ biến của NPC
+        if lowerName:match("npc") or lowerName:match("shop") or lowerName:match("quest") or lowerName:match("dealer") or lowerName:match("vendor") or lowerName:match("seller") or lowerName:match("gacha") or lowerName:match("weapon") or lowerName:match("fruit") or lowerName:match("blox") or lowerName:match("safe") or lowerName:match("zone") then
+            isNPC = true
+        end
+        
+        -- 2. Lọc bằng Nút Bấm Tương Tác (Chắc chắn 100% là NPC/Shop)
+        if obj:FindFirstChildWhichIsA("ProximityPrompt", true) or obj:FindFirstChildWhichIsA("ClickDetector", true) then
+            isNPC = true
+        end
+        
+        -- 3. Lọc bằng Hệ thống Dialog mặc định
+        if obj:FindFirstChildWhichIsA("Dialog", true) then
+            isNPC = true
+        end
+        
+        if isNPC then
+            return -- Bỏ qua, không đưa vào danh sách đánh
+        end
+        
+        -- TẤT CẢ NHỮNG GÌ LỌT QUA BỘ LỌC TRÊN SẼ ĐƯỢC CHỨA VÀO CẢ DANH SÁCH QUÁI VÀ DANH SÁCH BOSS
         Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
         Config.MobListCache[obj.Name] = true
         Config.MobDataCache[obj.Name] = obj.HumanoidRootPart.Position
@@ -771,10 +791,10 @@ local PlayerLeft, PlayerRight = CreateTabButton("Player Mods")
 local InfoCard = CreateCard(OverviewLeft, "Thông Tin YuiHuB")
 
 local InfoLbl = Instance.new("TextLabel")
-InfoLbl.Size = UDim2.new(1, -16, 0, 80)
+InfoLbl.Size = UDim2.new(1, -16, 0, 95)
 InfoLbl.Position = UDim2.new(0, 8, 0, 0)
 InfoLbl.BackgroundTransparency = 1
-InfoLbl.Text = "- FULL SOURCE - KHÔNG RÚT GỌN.\n- Gộp Quét Quái & Boss chung thành 1 danh sách.\n- 5 Slot Đổi Vũ Khí Tự Động (Kéo Delay Riêng).\n- Fast Attack không delay (Max Tốc Độ)."
+InfoLbl.Text = "- FULL SOURCE CODE. KHÔNG RÚT GỌN.\n- Lọc NPC/Shop triệt để bằng ProximityPrompt.\n- Gộp chung danh sách Quái & Boss làm 1.\n- Có 5 Slot Vũ Khí kèm 5 Thanh Delay riêng.\n- Fast Attack KHÔNG DELAY."
 InfoLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 InfoLbl.Font = Enum.Font.Gotham
 InfoLbl.TextSize = 10
@@ -863,7 +883,7 @@ CreateToggle(SkillContainer, "Auto Skill J", "AutoSkillJ")
 SkillContainer.CanvasSize = UDim2.new(0, 0, 0, 320)
 
 -- =========================================================
--- [ TAB: SETTINGS (CHUNG & 5 SLOT VŨ KHÍ) ]
+-- [ TAB: SETTINGS (CHUNG & AUTO ĐỔI VŨ KHÍ 5 SLOT) ]
 -- =========================================================
 local SettingCard = CreateCard(SettingsLeft, "Cài Đặt Đánh Chung")
 CreateButton(SettingCard, "Đổi Mode: " .. Config.MovementMode, function(btn)
@@ -920,15 +940,14 @@ for _, posName in ipairs(PositionsList) do
 end
 PosContainer.CanvasSize = UDim2.new(0, 0, 0, PosLayout.AbsoluteContentSize.Y)
 
--- MỤC 5 SLOT AUTO ĐỔI VŨ KHÍ
-local WeaponCard = CreateCard(SettingsRight, "Quản Lý Vũ Khí Balo")
+-- 5 SLOT VŨ KHÍ MỚI
+local WeaponCard = CreateCard(SettingsRight, "Quản Lý Vũ Khí Balo (5 Slot)")
 CreateToggle(WeaponCard, "Bật Auto Đổi Vũ Khí", "AutoSwapWeapons")
 
 local SlotDropdowns = {}
 local SlotLayouts = {}
 local SlotWraps = {}
 
--- Tạo 5 Hàng Dropdown và 5 Thanh Trượt
 for i = 1, 5 do
     local dpContainer, dpLayout, dpWrap = CreateDropdown(WeaponCard, "Slot " .. i .. ": " .. Config["WeaponSlot"..i])
     CreateSlider(WeaponCard, "Thời gian giữ Slot " .. i .. " (s)", 1, 60, Config["Delay"..i], "Delay"..i, false)
@@ -1670,7 +1689,7 @@ local function TeleportTo(targetCFrame)
     end
 end
 
--- Fixed: Chỉ Equip khi AutoSwapWeapons Tắt (Tránh đụng độ vòng lặp Đổi Vũ Khí)
+-- Fixed: Chỉ Equip Slot 1 lúc đầu nếu tính năng Đổi 5 Slot ĐANG BẬT
 local function EquipWeaponsFast()
     if Config.AutoSwapWeapons then return end
     
@@ -1681,7 +1700,7 @@ local function EquipWeaponsFast()
         return
     end
     
-    -- Mặc vũ khí ở Slot 1 nếu không Auto Swap (Vì người dùng chọn Slot 1 làm chính)
+    -- Mặc vũ khí ở Slot 1 nếu Auto Swap bị tắt
     local primaryWeapon = Config.WeaponSlot1
     if primaryWeapon ~= "" and primaryWeapon ~= "None" then
         for _, tool in ipairs(char:GetChildren()) do
