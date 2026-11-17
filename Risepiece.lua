@@ -1,10 +1,9 @@
 -- =====================================================================
--- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V13]
--- BẢN CHUẨN 100% FULL SOURCE - KHÔNG GỘP DÒNG - KHÔNG CẮT XÉN.
--- 1. Khôi phục hàm Quét Quái & Boss cực chuẩn từ V7 (Không dính NPC).
--- 2. Đã sửa "Kiểu Đánh" thành quét Tool/Melee trong Balo + Auto Đổi Vũ Khí.
--- 3. Giao diện Mobile (600x380), có nút Ghim (📌) và Thu nhỏ (-).
--- 4. Auto Skill mượt mà, ESP Trái Ác Quỷ, Teleport Đảo đầy đủ.
+-- SUPERIOR AUTO FARM SCRIPT (YUIHUB / MARU STYLE) - [ULTIMATE V14 FULL]
+-- Giao diện thu gọn Mobile (600x380). Giữ nguyên 100% cấu trúc dài gốc.
+-- Tuyệt đối không gộp dòng, không cắt xén. Hiệu năng mượt mà tuyệt đối.
+-- [V14 UPDATE]: Đổi Vũ Khí 5 Slot có Delay riêng, Fast Attack Max Speed, 
+-- Gộp chung quét Quái và Boss (Cả 2 như 1 - Quét chuẩn V7 gốc).
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -40,7 +39,7 @@ local function DisconnectAll()
     table.clear(RuntimeConnections)
 end
 
--- [ CẤU HÌNH BIẾN TOÀN CỤC ]
+-- [ CẤU HÌNH BIẾN TOÀN CỤC BẢN GỐC KẾT HỢP BẢN MỚI ]
 local Config = {
     AutoFarm = false,
     AutoBoss = false,
@@ -70,14 +69,16 @@ local Config = {
     TweenDuration = 0.5,
     BossWaitTime = 0.5, 
     
-    -- Tính năng Đổi Kiểu Đánh (Vũ Khí)
+    -- HỆ THỐNG AUTO SWAP VŨ KHÍ 5 SLOT MỚI
     AutoSwapWeapons = false,
-    SwapInterval = 5,
+    WeaponSlot1 = "None", Delay1 = 5,
+    WeaponSlot2 = "None", Delay2 = 5,
+    WeaponSlot3 = "None", Delay3 = 5,
+    WeaponSlot4 = "None", Delay4 = 5,
+    WeaponSlot5 = "None", Delay5 = 5,
     
-    SelectedWeapons = {}, 
     SelectedMobs = {}, 
     SelectedBosses = {},
-    
     MobListCache = {}, 
     BossDataCache = {}, 
     MobDataCache = {},
@@ -108,7 +109,7 @@ local activelyFarming = false
 -- =====================================================================
 -- [ UI LIBRARY: YUIHUB MOBILE OPTIMIZED (MARU STYLE) ]
 -- =====================================================================
-local UI_NAME = "YuiHuB_Mobile_V13_FullSource"
+local UI_NAME = "YuiHuB_Mobile_FullSource_V14"
 local targetParent = nil
 
 pcall(function()
@@ -133,7 +134,7 @@ ScreenGui.Name = UI_NAME
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = targetParent
 
--- Nút Mở/Đóng (Toggle Logo)
+-- Nút Mở/Đóng (Toggle)
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Size = UDim2.new(0, 45, 0, 45)
 ToggleButton.Position = UDim2.new(0, 10, 0.5, -22)
@@ -714,31 +715,13 @@ local function CreateDropdown(parent, titleText)
 end
 
 -- =====================================================================
--- [ KHÔI PHỤC HÀM TÌM KIẾM QUÁI & BOSS TỪ BẢN V7 ]
+-- [ BỘ LỌC TÌM KIẾM QUÁI & BOSS (CẢ 2 NHƯ 1 - V7 GỐC) ]
 -- =====================================================================
 local function TeleportToPos(pos)
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         char.HumanoidRootPart.CFrame = CFrame.new(pos)
     end
-end
-
-local function GetMobFolders()
-    local folders = {}
-    local mapa = Workspace:FindFirstChild("Mapa") or Workspace:FindFirstChild("Map") or Workspace:FindFirstChild("map")
-    if mapa and mapa:FindFirstChild("Enemies") then
-        table.insert(folders, mapa.Enemies)
-    end
-    
-    local monsters = Workspace:FindFirstChild("Monsters") or Workspace:FindFirstChild("monsters")
-    if monsters then
-        table.insert(folders, monsters)
-    end
-    
-    if #folders == 0 then
-        table.insert(folders, Workspace)
-    end
-    return folders
 end
 
 local function IsAlive(mob)
@@ -750,20 +733,16 @@ local function IsAlive(mob)
     return false
 end
 
--- ĐÂY LÀ HÀM SCAN CỦA BẢN GỐC V7 MÀ BẠN MUỐN (CHUẨN 100%)
+-- QUÉT CHUẨN: Đưa TẤT CẢ mục tiêu quét được vào chung danh sách Quái và Boss
 local function ScanObj(obj)
     if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and obj:FindFirstChild("HumanoidRootPart") and obj ~= LocalPlayer.Character then
         local lowerName = obj.Name:lower()
         if string.match(lowerName, "^spawnner") or string.match(lowerName, "^spawner") then return end
         
-        local isDirectWorkspace = (obj.Parent == Workspace)
-        
-        if string.match(lowerName, "boss$") or (isDirectWorkspace and string.match(lowerName, "lv%.%s*%d+")) then
-            Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
-        else
-            Config.MobListCache[obj.Name] = true
-            Config.MobDataCache[obj.Name] = obj.HumanoidRootPart.Position
-        end
+        -- Cho vào cả 2 như 1 (Mob và Boss đều dùng chung DataCache)
+        Config.BossDataCache[obj.Name] = obj.HumanoidRootPart.Position
+        Config.MobListCache[obj.Name] = true
+        Config.MobDataCache[obj.Name] = obj.HumanoidRootPart.Position
     end
 end
 
@@ -773,8 +752,6 @@ end
 CreateCategory("Workspace")
 local OverviewLeft, OverviewRight = CreateTabButton("Overview")
 local FarmLeft, FarmRight = CreateTabButton("Farming")
-
--- CHUYỂN SETTINGS XUỐNG DƯỚI FARMING
 local SettingsLeft, SettingsRight = CreateTabButton("Settings")
 
 CreateCategory("Combat")
@@ -797,7 +774,7 @@ local InfoLbl = Instance.new("TextLabel")
 InfoLbl.Size = UDim2.new(1, -16, 0, 80)
 InfoLbl.Position = UDim2.new(0, 8, 0, 0)
 InfoLbl.BackgroundTransparency = 1
-InfoLbl.Text = "- KHÔI PHỤC HÀM QUÉT V7 (KHÔNG LỖI).\n- Auto Đổi Kiểu Đánh (Vũ Khí) + Cất Vũ Khí chuẩn.\n- Auto Skill Cực Mượt (Hold Key).\n- Ghim (📌) và Thu Nhỏ (-) Menu."
+InfoLbl.Text = "- FULL SOURCE - KHÔNG RÚT GỌN.\n- Gộp Quét Quái & Boss chung thành 1 danh sách.\n- 5 Slot Đổi Vũ Khí Tự Động (Kéo Delay Riêng).\n- Fast Attack không delay (Max Tốc Độ)."
 InfoLbl.TextColor3 = Color3.fromRGB(180, 180, 190)
 InfoLbl.Font = Enum.Font.Gotham
 InfoLbl.TextSize = 10
@@ -816,21 +793,10 @@ CreateButton(FarmCard, "Quét Làm Mới Bản Đồ", function()
     table.clear(Config.MobDataCache)
     table.clear(Config.BossDataCache)
     
-    local folders = GetMobFolders()
-    if #folders > 0 and folders[1] ~= Workspace then
-        for _, folder in ipairs(folders) do
-            for _, obj in pairs(folder:GetDescendants()) do
-                ScanObj(obj)
-            end
-        end
-    else
-        local allDescendants = Workspace:GetDescendants()
-        for i, obj in pairs(allDescendants) do 
-            ScanObj(obj) 
-            if i % 1000 == 0 then task.wait() end 
-        end
+    local allDescendants = Workspace:GetDescendants()
+    for _, obj in ipairs(allDescendants) do
+        ScanObj(obj)
     end
-    for _, obj in pairs(Workspace:GetChildren()) do ScanObj(obj) end
     
     UpdateMobUIList()
     UpdateBossUIList()
@@ -897,7 +863,7 @@ CreateToggle(SkillContainer, "Auto Skill J", "AutoSkillJ")
 SkillContainer.CanvasSize = UDim2.new(0, 0, 0, 320)
 
 -- =========================================================
--- [ TAB: SETTINGS ]
+-- [ TAB: SETTINGS (CHUNG & 5 SLOT VŨ KHÍ) ]
 -- =========================================================
 local SettingCard = CreateCard(SettingsLeft, "Cài Đặt Đánh Chung")
 CreateButton(SettingCard, "Đổi Mode: " .. Config.MovementMode, function(btn)
@@ -912,10 +878,9 @@ end)
 CreateSlider(SettingCard, "Khoảng Cách", 0, 50, 5, "Distance", false)
 CreateSlider(SettingCard, "Tốc Độ Tween", 0.1, 10, 0.5, "TweenDuration", true)
 CreateToggle(SettingCard, "Auto Click", "AutoAttack")
-CreateToggle(SettingCard, "FAST ATTACK", "FastAttack")
+CreateToggle(SettingCard, "FAST ATTACK MAX", "FastAttack")
 
-local AutoPosCard = CreateCard(SettingsLeft, "Vị Trí Đứng Đánh")
-local PosContainer, PosLayout, PosWrap = CreateDropdown(AutoPosCard, "Vị Trí: " .. Config.FarmPosition)
+local PosContainer, PosLayout, PosWrap = CreateDropdown(SettingCard, "Vị Trí Đứng Đánh")
 local PositionsList = {"Trên đầu", "Đằng sau", "Đằng trước", "Dưới chân"}
 
 for _, posName in ipairs(PositionsList) do
@@ -941,12 +906,7 @@ for _, posName in ipairs(PositionsList) do
     
     btn.MouseButton1Click:Connect(function()
         Config.FarmPosition = posName
-        
-        local toggleBtn = PosWrap:FindFirstChildWhichIsA("TextButton")
-        if toggleBtn then
-            toggleBtn.Text = "  Vị Trí: " .. posName .. "  ▼"
-        end
-        
+        PosWrap:FindFirstChildWhichIsA("TextButton").Text = "  Vị Trí: " .. posName .. "  ▼"
         for _, b in pairs(PosContainer:GetChildren()) do
             if b:IsA("TextButton") then
                 if b.Text:match(posName) then
@@ -960,28 +920,38 @@ for _, posName in ipairs(PositionsList) do
 end
 PosContainer.CanvasSize = UDim2.new(0, 0, 0, PosLayout.AbsoluteContentSize.Y)
 
+-- MỤC 5 SLOT AUTO ĐỔI VŨ KHÍ
+local WeaponCard = CreateCard(SettingsRight, "Quản Lý Vũ Khí Balo")
+CreateToggle(WeaponCard, "Bật Auto Đổi Vũ Khí", "AutoSwapWeapons")
 
-local WeaponCard = CreateCard(SettingsRight, "Kiểu Đánh (Vũ Khí Balo)")
+local SlotDropdowns = {}
+local SlotLayouts = {}
+local SlotWraps = {}
 
--- Nút Bật/Tắt Auto Đổi Kiểu Đánh (Vũ Khí)
-CreateToggle(WeaponCard, "Bật Auto Đổi Kiểu Đánh", "AutoSwapWeapons")
-CreateSlider(WeaponCard, "Thời gian chuyển (s)", 1, 60, 5, "SwapInterval", false)
+-- Tạo 5 Hàng Dropdown và 5 Thanh Trượt
+for i = 1, 5 do
+    local dpContainer, dpLayout, dpWrap = CreateDropdown(WeaponCard, "Slot " .. i .. ": " .. Config["WeaponSlot"..i])
+    CreateSlider(WeaponCard, "Thời gian giữ Slot " .. i .. " (s)", 1, 60, Config["Delay"..i], "Delay"..i, false)
+    
+    SlotDropdowns[i] = dpContainer
+    SlotLayouts[i] = dpLayout
+    SlotWraps[i] = dpWrap
+end
 
-local WeaponListContainer, WeaponListLayout, WeaponWrap = CreateDropdown(WeaponCard, "Chọn Kiểu Đánh / Vũ Khí")
-
-CreateButton(WeaponCard, "Quét Balo Vũ Khí", function()
-    for _, child in pairs(WeaponListContainer:GetChildren()) do
-        if child:IsA("TextButton") then
-            child:Destroy()
+CreateButton(WeaponCard, "Quét Làm Mới Balo", function()
+    -- Xóa các nút cũ trong 5 Slot
+    for i = 1, 5 do
+        for _, child in pairs(SlotDropdowns[i]:GetChildren()) do
+            if child:IsA("TextButton") then
+                child:Destroy()
+            end
         end
     end
     
     local tools = {}
     local backpack = LocalPlayer.Backpack
-    
     if backpack then
-        local bpChildren = backpack:GetChildren()
-        for _, tool in ipairs(bpChildren) do
+        for _, tool in ipairs(backpack:GetChildren()) do
             if tool:IsA("Tool") then
                 tools[tool.Name] = tool
             end
@@ -990,57 +960,63 @@ CreateButton(WeaponCard, "Quét Balo Vũ Khí", function()
     
     local char = LocalPlayer.Character
     if char then
-        local charChildren = char:GetChildren()
-        for _, tool in ipairs(charChildren) do
+        for _, tool in ipairs(char:GetChildren()) do
             if tool:IsA("Tool") then
                 tools[tool.Name] = tool
             end
         end
     end
     
-    for toolName, _ in pairs(tools) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, -4, 0, 22)
+    -- Thêm lựa chọn vào 5 Dropdown
+    for i = 1, 5 do
+        -- Nút Bỏ Trống
+        local btnNone = Instance.new("TextButton")
+        btnNone.Size = UDim2.new(1, -4, 0, 22)
+        btnNone.BackgroundColor3 = (Config["WeaponSlot"..i] == "None") and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(22, 25, 32)
+        btnNone.Text = "  [Bỏ Trống]"
+        btnNone.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btnNone.Font = Enum.Font.Gotham
+        btnNone.TextSize = 10
+        btnNone.TextXAlignment = Enum.TextXAlignment.Left
+        btnNone.Parent = SlotDropdowns[i]
+        Instance.new("UICorner", btnNone).CornerRadius = UDim.new(0, 4)
         
-        if Config.SelectedWeapons[toolName] then
-            btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
-        end
-        
-        btn.Text = "  " .. toolName
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Font = Enum.Font.Gotham
-        btn.TextSize = 10
-        btn.TextXAlignment = Enum.TextXAlignment.Left
-        btn.Parent = WeaponListContainer
-        
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 4)
-        btnCorner.Parent = btn
-        
-        btn.MouseButton1Click:Connect(function()
-            if Config.SelectedWeapons[toolName] then
-                Config.SelectedWeapons[toolName] = nil
-                btn.BackgroundColor3 = Color3.fromRGB(22, 25, 32)
-                
-                -- LỖI CẤT VŨ KHÍ FIX TẠI ĐÂY: Tháo vũ khí bị bỏ chọn ra khỏi tay ngay lập tức
-                local character = LocalPlayer.Character
-                local pBackpack = LocalPlayer:FindFirstChild("Backpack")
-                if character and pBackpack then
-                    local holdTool = character:FindFirstChild(toolName)
-                    if holdTool then
-                        holdTool.Parent = pBackpack
-                    end
+        btnNone.MouseButton1Click:Connect(function()
+            Config["WeaponSlot"..i] = "None"
+            SlotWraps[i]:FindFirstChildWhichIsA("TextButton").Text = "  Slot " .. i .. ": None  ▼"
+            for _, b in pairs(SlotDropdowns[i]:GetChildren()) do
+                if b:IsA("TextButton") then
+                    b.BackgroundColor3 = (b.Text:match("%[Bỏ Trống%]")) and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(22, 25, 32)
                 end
-            else
-                Config.SelectedWeapons[toolName] = true
-                btn.BackgroundColor3 = Color3.fromRGB(40, 150, 80)
             end
         end)
+        
+        -- Nút Tool trong Balo
+        for toolName, _ in pairs(tools) do
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, -4, 0, 22)
+            btn.BackgroundColor3 = (Config["WeaponSlot"..i] == toolName) and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(22, 25, 32)
+            btn.Text = "  " .. toolName
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.Font = Enum.Font.Gotham
+            btn.TextSize = 10
+            btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.Parent = SlotDropdowns[i]
+            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+            
+            btn.MouseButton1Click:Connect(function()
+                Config["WeaponSlot"..i] = toolName
+                SlotWraps[i]:FindFirstChildWhichIsA("TextButton").Text = "  Slot " .. i .. ": " .. toolName .. "  ▼"
+                for _, b in pairs(SlotDropdowns[i]:GetChildren()) do
+                    if b:IsA("TextButton") then
+                        b.BackgroundColor3 = (b.Text:match(toolName)) and Color3.fromRGB(40, 150, 80) or Color3.fromRGB(22, 25, 32)
+                    end
+                end
+            end)
+        end
+        
+        SlotDropdowns[i].CanvasSize = UDim2.new(0, 0, 0, SlotLayouts[i].AbsoluteContentSize.Y)
     end
-    
-    WeaponListContainer.CanvasSize = UDim2.new(0, 0, 0, WeaponListLayout.AbsoluteContentSize.Y)
 end)
 
 
@@ -1525,50 +1501,52 @@ ToggleButton.MouseButton1Click:Connect(function()
 end)
 
 -- =========================================================
--- [ HỆ THỐNG AUTO ĐỔI KIỂU ĐÁNH / VŨ KHÍ THEO THỜI GIAN ]
+-- [ HỆ THỐNG AUTO ĐỔI VŨ KHÍ TỰ ĐỘNG - 5 SLOT ]
 -- =========================================================
 local lastSwapTime = tick()
-local currentWeaponIndex = 1
+local currentWeaponSlot = 1
 
 SafeConnect(RunService.Heartbeat, function()
-    local currentTime = tick()
+    if not Config.AutoSwapWeapons then return end
     
-    if currentTime - lastSwapTime >= Config.SwapInterval then
+    local currentTime = tick()
+    local currentDelay = Config["Delay"..currentWeaponSlot]
+    
+    if currentTime - lastSwapTime >= currentDelay then
         lastSwapTime = currentTime
         
-        -- Logic Auto Đổi Kiểu Đánh (Vũ Khí)
-        if Config.AutoSwapWeapons then
-            local activeWeapons = {}
-            for name, isSelected in pairs(Config.SelectedWeapons) do
-                if isSelected then
-                    table.insert(activeWeapons, name)
-                end
+        -- Chuyển sang Slot tiếp theo hợp lệ (Không phải "None")
+        local startingSlot = currentWeaponSlot
+        repeat
+            currentWeaponSlot = currentWeaponSlot + 1
+            if currentWeaponSlot > 5 then
+                currentWeaponSlot = 1
             end
             
-            if #activeWeapons > 0 then
-                currentWeaponIndex = currentWeaponIndex + 1
-                if currentWeaponIndex > #activeWeapons then
-                    currentWeaponIndex = 1
+            local wName = Config["WeaponSlot"..currentWeaponSlot]
+            if wName ~= "" and wName ~= "None" then
+                break
+            end
+        until currentWeaponSlot == startingSlot
+        
+        local nextWeapon = Config["WeaponSlot"..currentWeaponSlot]
+        
+        if nextWeapon ~= "" and nextWeapon ~= "None" then
+            local char = LocalPlayer.Character
+            local backpack = LocalPlayer:FindFirstChild("Backpack")
+            
+            if char and backpack then
+                -- Cất hết vũ khí không phải là nextWeapon
+                for _, tool in ipairs(char:GetChildren()) do
+                    if tool:IsA("Tool") and tool.Name ~= nextWeapon then
+                        tool.Parent = backpack
+                    end
                 end
                 
-                local nextWeapon = activeWeapons[currentWeaponIndex]
-                
-                local char = LocalPlayer.Character
-                local backpack = LocalPlayer:FindFirstChild("Backpack")
-                
-                if char and backpack then
-                    -- Cất hết vũ khí không phải là nextWeapon
-                    for _, tool in ipairs(char:GetChildren()) do
-                        if tool:IsA("Tool") and tool.Name ~= nextWeapon then
-                            tool.Parent = backpack
-                        end
-                    end
-                    
-                    -- Lấy vũ khí tiếp theo ra
-                    local newTool = backpack:FindFirstChild(nextWeapon)
-                    if newTool then
-                        newTool.Parent = char
-                    end
+                -- Lấy vũ khí tiếp theo ra
+                local newTool = backpack:FindFirstChild(nextWeapon)
+                if newTool then
+                    newTool.Parent = char
                 end
             end
         end
@@ -1611,43 +1589,11 @@ local function GetBestMobTarget()
         end
     end
 
-    local folders = GetMobFolders()
-    if #folders > 0 and folders[1] ~= Workspace then
-        for _, folder in ipairs(folders) do
-            for _, obj in pairs(folder:GetDescendants()) do
-                if obj:IsA("Model") and IsAlive(obj) and obj ~= char then
-                    if Config.SelectedMobs[obj.Name] then
-                        local levelString = obj.Name:match("%d+")
-                        local level = 1
-                        
-                        if levelString then
-                            level = tonumber(levelString)
-                        end
-                        
-                        local root = obj:FindFirstChild("HumanoidRootPart")
-                        if root then
-                            local dist = (root.Position - myPos).Magnitude
-                            
-                            if level > highestLevel then
-                                highestLevel = level
-                                shortestDist = dist
-                                bestTarget = obj
-                            elseif level == highestLevel then
-                                if dist < shortestDist then
-                                    shortestDist = dist
-                                    bestTarget = obj
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    else
-        local allDescendants = Workspace:GetDescendants()
-        for _, obj in ipairs(allDescendants) do
-            if obj:IsA("Model") and IsAlive(obj) and obj ~= char then
-                if Config.SelectedMobs[obj.Name] then
+    local allDescendants = Workspace:GetDescendants()
+    for _, obj in ipairs(allDescendants) do
+        if obj:IsA("Model") and IsAlive(obj) and obj ~= char then
+            if Config.SelectedMobs[obj.Name] then
+                if not string.match(obj.Name:lower(), "boss$") then
                     local levelString = obj.Name:match("%d+")
                     local level = 1
                     
@@ -1724,11 +1670,9 @@ local function TeleportTo(targetCFrame)
     end
 end
 
+-- Fixed: Chỉ Equip khi AutoSwapWeapons Tắt (Tránh đụng độ vòng lặp Đổi Vũ Khí)
 local function EquipWeaponsFast()
-    -- Bỏ qua thao tác equip tay nếu đang dùng Auto Swap Vũ Khí để tránh đụng độ
-    if Config.AutoSwapWeapons then
-        return
-    end
+    if Config.AutoSwapWeapons then return end
     
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
@@ -1737,31 +1681,33 @@ local function EquipWeaponsFast()
         return
     end
     
-    -- Cất đi những vũ khí chưa được chọn
-    local currentTools = char:GetChildren()
-    for _, tool in ipairs(currentTools) do
-        if tool:IsA("Tool") and not Config.SelectedWeapons[tool.Name] then
-            tool.Parent = backpack
-        end
-    end
-    
-    -- Mặc lên những vũ khí đã được chọn
-    for toolName, isSelected in pairs(Config.SelectedWeapons) do
-        if isSelected then
-            local toolInBp = backpack:FindFirstChild(toolName)
-            if toolInBp then
-                toolInBp.Parent = char
+    -- Mặc vũ khí ở Slot 1 nếu không Auto Swap (Vì người dùng chọn Slot 1 làm chính)
+    local primaryWeapon = Config.WeaponSlot1
+    if primaryWeapon ~= "" and primaryWeapon ~= "None" then
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") and tool.Name ~= primaryWeapon then
+                tool.Parent = backpack
             end
+        end
+        
+        local toolInBp = backpack:FindFirstChild(primaryWeapon)
+        if toolInBp then
+            toolInBp.Parent = char
         end
     end
 end
 
+-- =========================================================
+-- [ FAST ATTACK SIÊU TỐC - ĐÁNH MAX SPEED KO DELAY ]
+-- =========================================================
 SafeConnect(RunService.RenderStepped, function()
     local char = LocalPlayer.Character
     if not char then return end
     
     if Config.FastAttack or Config.AutoAttack then
-        EquipWeaponsFast() 
+        if not Config.AutoSwapWeapons then
+            EquipWeaponsFast() 
+        end
         
         local children = char:GetChildren()
         for i = 1, #children do
@@ -1769,7 +1715,8 @@ SafeConnect(RunService.RenderStepped, function()
             
             if tool:IsA("Tool") then
                 if Config.FastAttack then
-                    for j = 1, 3 do
+                    -- KHÔNG CÓ DELAY. LẶP 5 LẦN TRONG CÙNG 1 FRAME ĐỂ ĐÁNH CHÁY MÁY
+                    for j = 1, 5 do
                         tool:Activate()
                     end
                 else
@@ -2203,4 +2150,4 @@ SafeConnect(LocalPlayer.Idled, function()
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 end)
 
-print("YuiHuB Mobile V13 Loaded - 100% UNCOMPRESSED SOURCE CODE - FIXED ALL BUGS!")
+print("YuiHuB Mobile V14 Loaded - 100% UNCOMPRESSED SOURCE CODE - ALL FIXES APPLIED!")
